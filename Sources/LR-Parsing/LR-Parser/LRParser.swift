@@ -8,7 +8,7 @@
 
 import Foundation
 import Grammar
-import Tokenizer
+import Lexer
 import OSLog
 
 enum LRParseError: Error, CustomStringConvertible {
@@ -52,68 +52,63 @@ public class LRParser: Parser {
     public func syntaxTree(for string: String) throws -> ParseTree {
         return try parse(string)
     }
-    
+
+    /// Parses `source` text using GrammarTokenizer's general-purpose
+    /// `Tokenizer` (configured with this parser's fixed `symbols` list), then
+    /// runs the shift/reduce loop.
     public func parse(_ source: String) throws -> ParseTree {
+        try parse(stream: TokenizerStream(source: source, symbols: Set(symbols), keywords: []))
+    }
+
+    /// Runs the shift/reduce loop against any `TokenStream` — the DFA-driven
+    /// `LexerTokenStream` (built via a `LexerBuilder` bootstrapped from a
+    /// `GrammarVocabulary`) and the hand-written `TokenizerStream` are both
+    /// accepted interchangeably, as is any other conformance.
+    ///
+    /// - Parameter stream: A positioned sequence of tokens, each resolvable
+    ///   to a `Terminal` and a source `Range<String.Index>`.
+    public func parse<S: TokenStream>(stream: S) throws -> ParseTree {
         // Generate Tables
         // In a real scenario, you might generate these once in 'init' and throw there,
         // but checking here ensures safety.
         guard let (table, statesDebug) = generator.generate() else {
             throw LRParseError.generationFailed("Grammar contains conflicts (not LR-compliant).")
         }
-        
-        // Setup Tokenizer & Constants
-        let eofTerminal = Terminal.meta(.eof)
-        // Ensure your Tokenizer and Symbol mapping matches your specific implementation
-        let tokenizer = Tokenizer(source, symbols: Set(symbols), keywords: [])
-        
+
+        var cursor = StreamCursor(stream: stream)
+
         // Initialize Stack
         // We use .empty as the sentinel for State 0
         var stack: [StackElement] = [StackElement(state: 0, node: .empty)]
-        
-        var currentToken = tokenizer.next()
-        
-        // Helper: Convert Token? -> Terminal
-        func getTerminal(_ t: Token?) -> Terminal {
-            guard let t = t else { return eofTerminal }
-            switch t.type {
-            case .symbol(let s): return Terminal(string: s)
-            case .literal(let s): return Terminal(string: s)
-            case .identifier(let s): return Terminal(string: s)
-            default: return Terminal(string: t.description)
-            }
-        }
-        
+
+        var current = try cursor.peek()
+
         while true {
             guard let currentStateId = stack.last?.state else {
                 throw LRParseError.internalError("Stack underflow (empty stack).")
             }
             
-            let terminal = getTerminal(currentToken)
+            let terminal = current.terminal
             
             // Look up Action
             guard let action = table.action[currentStateId]?[terminal] else {
-                if currentToken == nil {
+                if case .meta(.eof) = terminal {
                     throw LRParseError.unexpectedEOF(state: currentStateId)
                 } else {
                     print("Syntax Error: Unexpected token \(terminal) in state \(currentStateId)")
                     print("State Items: \(statesDebug[currentStateId]!)")
-                    throw LRParseError.unexpectedToken(token: currentToken!.description, state: currentStateId)
+                    throw LRParseError.unexpectedToken(token: "\(terminal)", state: currentStateId)
                 }
             }
             
             switch action {
             case .shift(let nextState):
                 // Create a Leaf Node
-                let leafNode: SyntaxTree<NonTerminal, Range<String.Index>>
-                if let token = currentToken {
-                    leafNode = .leaf(token.range)
-                } else {
-                    // It's rare to shift EOF, but if the grammar allows it:
-                    leafNode = .empty
-                }
-                
+                let leafNode: SyntaxTree<NonTerminal, Range<String.Index>> = current.range.map(ParseTree.leaf) ?? .empty
+
                 stack.append(StackElement(state: nextState, node: leafNode))
-                currentToken = tokenizer.next()
+                cursor.advance()
+                current = try cursor.peek()
                 
             case .reduce(let production):
                 let childCount = production.rule.count
@@ -160,26 +155,37 @@ public class LRParser: Parser {
             }
         }
     }
+}
 
-    /// Extracts the `Terminal` type contained in a given token.
-    func extractTerminal(_ token: Token) throws -> (terminal: Terminal, range: Range<String.Index>) {
-        let (terminal, range) = switch token.type {
-        case .symbol(let symbol):
-            (Terminal(string: symbol), token.range)
-        case .literal(let literal):
-            (Terminal(string: literal), token.range)
-        case .identifier(let identifier):
-            (Terminal(string: identifier), token.range)
-        case .number(let number):
-            switch number {
-            case .decimal(let value), .binary(let value), .octal(let value), .hexadecimal(let value):
-                (Terminal(string: "\(value)"), token.range)
-            }
-        case .eof:
-            (Terminal.meta(.eof), token.range)
-        default:
-            throw LRParseError.tokenError("symbol \(token) not recognized")
-        }
+/// A one-token-lookahead cursor over a `TokenStream`, used by the shift/reduce
+/// loop above in place of calling `next()` directly on a GrammarTokenizer
+/// `Tokenizer`.
+///
+/// LR parsing only ever reads the input strictly left-to-right, one token of
+/// lookahead at a time, so a `TokenStream`'s random-access `terminal(at:)` is
+/// used here purely as an indexed pull — `peek()`/`advance()` never revisit a
+/// past position.
+///
+/// Once the stream is exhausted (`position >= stream.count`), or a
+/// `Terminal.meta(.eof)` is encountered before that point (some
+/// `TokenStream` front ends include an explicit end-of-input entry, others
+/// don't — see `Lexer`'s `TokenizerStream`), `peek()` keeps returning
+/// `Terminal.meta(.eof)` with a `nil` range indefinitely — mirroring the
+/// `Token? == nil` sentinel the previous `Tokenizer.next()`-based loop relied on.
+private struct StreamCursor<S: TokenStream> {
+    let stream: S
+    private(set) var position = 0
+
+    init(stream: S) { self.stream = stream }
+
+    func peek() throws -> (terminal: Terminal, range: Range<String.Index>?) {
+        guard position < stream.count else { return (.meta(.eof), nil) }
+        let (terminal, range) = try stream.terminal(at: position)
+        if case .meta(.eof) = terminal { return (.meta(.eof), nil) }
         return (terminal, range)
+    }
+
+    mutating func advance() {
+        if position < stream.count { position += 1 }
     }
 }

@@ -43,6 +43,7 @@ LR parsers are **shift-reduce** parsers that read input left-to-right and produc
 - **Multiple grammar input formats**: BNF, EBNF, WSN, and the package-native `.gen` format
 - **Automatic table generation** — FIRST/FOLLOW sets, LR(0)/LR(1) item closure, GOTO construction, and LALR state merging are all computed from the grammar at init time
 - **Typed parse trees** — `SyntaxTree<NonTerminal, Range<String.Index>>` with full generic map/filter/compress/explode traversal API
+- **`TokenStream` integration** — drives from either GrammarTokenizer's hand-written tokenizer (`parse(_ string:)`, the default) or a DFA lexer bootstrapped from a `GrammarVocabulary` (`parse(stream:)`), interchangeably
 - **Graphviz export** — render any parse tree as a PDF via `dot`
 - **Colorized terminal output** via `TerminalColors`
 - **Conflict detection** — shift/reduce and reduce/reduce conflicts are detected during table generation and reported with state context
@@ -89,6 +90,21 @@ let source = "id + id * id"
 let labeled = try parser.syntaxTree(for: source)
                         .mapLeafs { range in String(source[range]) }
 print(labeled)
+```
+
+### 4. Parsing a `TokenStream` directly
+
+`syntaxTree(for:)`/`parse(_ string:)` tokenize with GrammarTokenizer's `Tokenizer` by default. Any [Lexer](https://github.com/hakkabon/Lexer) `TokenStream` can be passed directly instead — including a DFA lexer bootstrapped from a `GrammarVocabulary`:
+
+```swift
+import Lexer
+
+var builder = LexerBuilder()
+builder.loadVocabulary(myGrammarVocabulary)
+let lexer = try builder.build()
+
+let stream = try LexerTokenStream(source: "id + id * id", lexer: lexer)
+let tree = try parser.parse(stream: stream)
 ```
 
 ---
@@ -266,14 +282,16 @@ LRTableGenerator
     └── populate ACTION + GOTO tables
             │
             ▼
-    LRParser.parse(source)
-        ├── Tokenizer → Token stream
+    LRParser.parse(source) / parse(stream:)
+        ├── TokenizerStream or LexerTokenStream → StreamCursor
         ├── Shift-reduce loop (ACTION/GOTO lookup)
         └── SyntaxTree construction
                 │
                 ▼
         ParseTree  →  print / graphviz / transform
 ```
+
+`parse(_ source:)` tokenizes with GrammarTokenizer's `Tokenizer` (via [Lexer](https://github.com/hakkabon/Lexer)'s `TokenizerStream`, configured with this parser's own `symbols` list) and hands the result to `parse<S: TokenStream>(stream: S)`, which runs the shift-reduce loop against any `TokenStream` — including a DFA lexer's `LexerTokenStream`. `StreamCursor` (in `LRParser.swift`) replaced direct `Tokenizer.next()` calls with an indexed pull over `TokenStream.terminal(at:)`; since LR parsing reads strictly left-to-right with one token of lookahead, this is a drop-in replacement, not an algorithmic change.
 
 ---
 
@@ -284,7 +302,7 @@ See the detailed improvement notes in the repository's [IMPROVEMENTS.md](IMPROVE
 - Table generation is re-run on every `parse()` call instead of being cached at `init` time
 - LR(0) reduce-on-all-terminals strategy causes unnecessary conflicts for most grammars
 - Conflict handling in `addShift` silently favors shift without propagating an error
-- The `extractTerminal` method is defined but never called in the parse loop
+- ~~The `extractTerminal` method is defined but never called in the parse loop~~ — resolved: both `extractTerminal` and the inline `getTerminal` closure it duplicated were removed when the parser adopted `TokenStream`; token-to-`Terminal` mapping now happens once, in `Lexer`'s `TokenizerStream`/`LexerTokenStream`, not in this package
 - `SyntaxError` (with line/column information) is never thrown by `LRParser`; it throws `LRParseError` instead
 - The LALR GOTO fixup comment notes a potential correctness issue when the merged state set doesn't exactly match generated goto sets
 - `Unique.< ` comparator compares `id` to itself rather than `lhs.id` to `rhs.id`
