@@ -91,7 +91,7 @@ public class LRParser: Parser {
             let terminal = current.terminal
             
             // Look up Action
-            guard let action = table.action[currentStateId]?[terminal] else {
+            guard let action = table.action(for: terminal, in: currentStateId) else {
                 if case .meta(.eof) = terminal {
                     throw LRParseError.unexpectedEOF(state: currentStateId)
                 } else {
