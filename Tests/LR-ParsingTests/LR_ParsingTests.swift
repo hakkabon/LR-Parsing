@@ -395,7 +395,7 @@ struct ParseTreeTransformationTests {
     func mapLeafsPreservesCount() throws {
         let tree = try labeledTree()
         let original = tree.leafs.count
-        let mapped = tree.mapLeafs { "X" }.leafs.count
+        let mapped = tree.mapLeafs { _ in "X" }.leafs.count
         #expect(original == mapped)
     }
 
@@ -429,12 +429,12 @@ struct ParseTreeTransformationTests {
         }
     }
 
-    // ── explode ─────────────────────────────────────────────────
+    // ── flattened ─────────────────────────────────────────────────
 
-    @Test("explode on always-true predicate returns only leaves")
-    func explodeAllReturnsLeaves() throws {
+    @Test("flattened on always-true predicate returns only leaves")
+    func flattenedAllReturnsLeaves() throws {
         let tree = try labeledTree()
-        let exploded = tree.explode { _ in true }
+        let exploded = tree.flattened { _ in true }
         for subtree in exploded {
             if case .leaf(_) = subtree { /* good */ } else {
                 Issue.record("explode(always-true) returned a non-leaf node")
@@ -442,31 +442,31 @@ struct ParseTreeTransformationTests {
         }
     }
 
-    @Test("explode on always-false predicate returns original tree in array")
-    func explodeNoneReturnsOriginal() throws {
+    @Test("flattened on always-false predicate returns original tree in array")
+    func flattenedNoneReturnsOriginal() throws {
         let tree = try labeledTree()
-        let exploded = tree.explode { _ in false }
+        let exploded = tree.flattened { _ in false }
         #expect(exploded.count == 1)
         #expect(exploded[0] == tree)
     }
 
-    // ── compressed ──────────────────────────────────────────────
+    // ── simplified ──────────────────────────────────────────────
 
-    @Test("compressed reduces single-child chains")
-    func compressedReducesSingleChildChains() throws {
+    @Test("simplified reduces single-child chains")
+    func simplifiedReducesSingleChildChains() throws {
         let tree = try labeledTree(source: "id")
-        let compressed = tree.compressed()
+        let compressed = tree.simplified()
         switch compressed {
         case .node, .leaf: break
         case .empty: Issue.record("compressed() returned .empty")
         }
     }
 
-    @Test("compressed preserves leaf values")
-    func compressedPreservesLeaves() throws {
+    @Test("simplified preserves leaf values")
+    func simplifiedPreservesLeaves() throws {
         let tree = try labeledTree()
         let original = tree.leafs
-        let compressed = tree.compressed().leafs
+        let compressed = tree.simplified().leafs
         #expect(original == compressed)
     }
 
