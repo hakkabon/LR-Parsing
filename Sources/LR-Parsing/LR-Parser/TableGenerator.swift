@@ -44,6 +44,16 @@ class LRTableGenerator {
         var stateMap = [Set<LRItem>: Int]()
         for (i, s) in states.enumerated() { stateMap[s] = i }
         
+        // For LALR, also build a core-keyed map so that goto results
+        // (which carry LR(1) lookaheads that may not match the merged
+        // LALR sets exactly) can still be resolved to the correct state.
+        var coreMap = [Set<LRItem.Core>: Int]()
+        if algorithm == .lalr {
+            for (i, s) in states.enumerated() {
+                coreMap[Set(s.map { $0.core })] = i
+            }
+        }
+        
         var table = LRTable()
         
         // 2. Populate Table
@@ -57,17 +67,20 @@ class LRTableGenerator {
             for symbol in nextSymbols {
                 // Calculate destination state
                 let nextStateItems = gotoState(items, symbol)
-                // LALR Note: If LALR, 'gotoState' here generates LR1 items.
-                // We must map these back to the merged LALR states.
-                // The 'stateMap' handles this if 'nextStateItems' matches the merged structure.
                 
-                guard let nextStateId = stateMap[nextStateItems] else {
-                    // This happens in LALR if logic isn't perfectly aligned,
-                    // but for strict sets, it should match.
+                // First try an exact match; for LALR fall back to core-only
+                // matching because the goto produces LR(1) items whose merged
+                // lookaheads may differ from the stored LALR state.
+                let nextStateId: Int
+                if let direct = stateMap[nextStateItems] {
+                    nextStateId = direct
+                } else if algorithm == .lalr,
+                          let coreId = coreMap[Set(nextStateItems.map { $0.core })] {
+                    nextStateId = coreId
+                } else {
                     print("Error: Transition to unknown state in generation.")
                     return nil
                 }
-                
                 switch symbol {
                 case .terminal(let t):
                     // Conflict Check (Shift/Reduce) happens at insertion

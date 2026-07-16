@@ -38,7 +38,7 @@ public class LRParser: Parser {
 
     let generator: LRTableGenerator
     let symbols = ["|", "\\", "^", ":", ",", "$", ".", "\"", "¶", ">", "#", "+", "-", "{","[", "<", "(",
-                   "'", "}", "]", ":]", ")", ";", "/", "*", "?", "??", ":="]
+                   "'", "}", "]", ":]", ")", ";", "/", "*", "?", "??", ":=", "="]
 
     public init(grammar: Grammar, algorithm: Algorithm) {
         self.generator = LRTableGenerator(grammar: grammar, algorithm: algorithm)

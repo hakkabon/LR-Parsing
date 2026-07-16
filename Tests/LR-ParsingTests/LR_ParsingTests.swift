@@ -364,7 +364,7 @@ struct ParseTreeTransformationTests {
     func mapNodesTransformsLabels() throws {
         let tree = try labeledTree()
         let upper = tree.mapNodes { $0.uppercased() }
-        let allNodes = upper.allNodes { _ in true }
+        let allNodes = upper.allNodes(where: { _ in true })
         for node in allNodes {
             if let label = node.root {
                 #expect(label == label.uppercased())
@@ -420,7 +420,7 @@ struct ParseTreeTransformationTests {
         let tree = try labeledTree(source: "id + id * id")
         let filtered = tree.filter { $0 == "expr" }
         if let f = filtered {
-            let allNodes = f.allNodes { _ in true }
+            let allNodes = f.allNodes(where: { _ in true })
             for node in allNodes {
                 if let label = node.root {
                     #expect(label == "expr")
@@ -434,7 +434,7 @@ struct ParseTreeTransformationTests {
     @Test("flattened on always-true predicate returns only leaves")
     func flattenedAllReturnsLeaves() throws {
         let tree = try labeledTree()
-        let exploded = tree.flattened { _ in true }
+        let exploded = tree.flattened(where: { _ in true })
         for subtree in exploded {
             if case .leaf(_) = subtree { /* good */ } else {
                 Issue.record("explode(always-true) returned a non-leaf node")
@@ -445,7 +445,7 @@ struct ParseTreeTransformationTests {
     @Test("flattened on always-false predicate returns original tree in array")
     func flattenedNoneReturnsOriginal() throws {
         let tree = try labeledTree()
-        let exploded = tree.flattened { _ in false }
+        let exploded = tree.flattened(where: { _ in false })
         #expect(exploded.count == 1)
         #expect(exploded[0] == tree)
     }
@@ -475,21 +475,21 @@ struct ParseTreeTransformationTests {
     @Test("allNodes(where: always-true) returns all inner nodes")
     func allNodesAlwaysTrue() throws {
         let tree = try labeledTree()
-        let all = tree.allNodes { _ in true }
+        let all = tree.allNodes(where: { _ in true })
         #expect(!all.isEmpty)
     }
 
     @Test("allNodes finds specific non-terminal")
     func allNodesFindsExpr() throws {
         let tree = try labeledTree(source: "id + id")
-        let exprNodes = tree.allNodes { $0 == "expr" }
+        let exprNodes = tree.allNodes(where: { $0 == "expr" })
         #expect(!exprNodes.isEmpty)
     }
 
     @Test("allNodes returns empty for never-matching predicate")
     func allNodesNeverMatch() throws {
         let tree = try labeledTree()
-        let none = tree.allNodes { $0 == "nonexistent_nt" }
+        let none = tree.allNodes(where: { $0 == "nonexistent_nt" })
         #expect(none.isEmpty)
     }
 
