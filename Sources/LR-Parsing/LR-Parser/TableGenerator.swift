@@ -9,21 +9,21 @@
 import Foundation
 import Grammar
 
-class LRTableGenerator {
+public final class LRTableGenerator {
     let grammar: Grammar
     let algorithm: LRParser.Algorithm
     let augmentedStart = NonTerminal(name: "S'")
     var firstSets: [Symbol: Set<Symbol>]
     var followSets: [NonTerminal: Set<Symbol>]
     
-    init(grammar: Grammar, algorithm: LRParser.Algorithm) {
+    public init(grammar: Grammar, algorithm: LRParser.Algorithm) {
         self.grammar = grammar
         self.algorithm = algorithm
         // Pre-calculate sets
         (self.firstSets, self.followSets) = grammar.firstAndFollow()
     }
     
-    func generate() -> (LRTable, [Int: Set<LRItem>])? {
+    public func generate() -> LRAutomaton {
         // 1. Generate Canonical Collection of States
         var states: [Set<LRItem>]
         
@@ -55,6 +55,8 @@ class LRTableGenerator {
         }
         
         var table = LRTable()
+        var transitions: [LRTransition] = []
+        var candidates: [Int: [Terminal: [LRAction]]] = [:]
         
         // 2. Populate Table
         for (stateId, items) in states.enumerated() {
@@ -78,13 +80,12 @@ class LRTableGenerator {
                           let coreId = coreMap[Set(nextStateItems.map { $0.core })] {
                     nextStateId = coreId
                 } else {
-                    print("Error: Transition to unknown state in generation.")
-                    return nil
+                    continue
                 }
+                transitions.append(LRTransition(source: stateId, symbol: symbol, target: nextStateId))
                 switch symbol {
                 case .terminal(let t):
-                    // Conflict Check (Shift/Reduce) happens at insertion
-                    addShift(to: &table, state: stateId, terminal: t, target: nextStateId)
+                    add(.shift(nextStateId), state: stateId, terminal: t, candidates: &candidates)
                 case .nonTerminal(let nt):
                     if table.gotoTable[stateId] == nil { table.gotoTable[stateId] = [:] }
                     table.gotoTable[stateId]?[nt] = nextStateId
@@ -98,7 +99,7 @@ class LRTableGenerator {
                 if item.nextSymbol == nil {
                     if item.production.goal == augmentedStart {
                         // Accept: S' -> S •
-                        table.action[stateId]?[.meta(.eof)] = .accept
+                        add(.accept, state: stateId, terminal: .meta(.eof), candidates: &candidates)
                     } else {
                         // Determine which terminals trigger reduction
                         let reduceTerminals = getReduceTerminals(for: item, at: item.production.goal)
@@ -106,16 +107,34 @@ class LRTableGenerator {
                         for term in reduceTerminals {
                             if case .meta(let m) = term, m == .eps { continue } // Never reduce on epsilon
                             
-                            // Attempt to add Reduce
-                            let conflict = addReduce(to: &table, state: stateId, terminal: term, production: item.production)
-                            if conflict { return nil } // Abort on conflict
+                            add(.reduce(item.production), state: stateId, terminal: term, candidates: &candidates)
                         }
                     }
                 }
             }
         }
         
-        return (table, Dictionary(uniqueKeysWithValues: states.enumerated().map { ($0, $1) }))
+        var rawConflicts: [(Int, Terminal, [LRAction])] = []
+        for (state, entries) in candidates {
+            for (terminal, actions) in entries {
+                let unique = actions.reduce(into: [LRAction]()) { if !$0.contains($1) { $0.append($1) } }
+                table.action[state, default: [:]][terminal] = preferredAction(in: unique)
+                if unique.count > 1 { rawConflicts.append((state, terminal, unique)) }
+            }
+        }
+        let prefixes = shortestPrefixes(transitions: transitions)
+        let conflicts = rawConflicts.map { state, terminal, actions in
+            var witness = prefixes[state] ?? []
+            if terminal != .meta(.eof) { witness.append(terminal) }
+            return LRConflict(kind: conflictKind(actions), state: state, lookahead: terminal, actions: actions, witness: witness)
+        }.sorted { ($0.state, $0.lookahead.description) < ($1.state, $1.lookahead.description) }
+        return LRAutomaton(
+            states: states.enumerated().map { LRState(id: $0.offset, items: $0.element) },
+            transitions: transitions,
+            actionTable: table.action,
+            gotoTable: table.gotoTable,
+            conflicts: conflicts
+        )
     }
     
     // MARK: - Helper: Resolve Reduction Lookaheads
@@ -324,6 +343,73 @@ class LRTableGenerator {
     }
 
     // MARK: - Table Population Utilities
+
+    private func add(_ action: LRAction, state: Int, terminal: Terminal, candidates: inout [Int: [Terminal: [LRAction]]]) {
+        candidates[state, default: [:]][terminal, default: []].append(action)
+    }
+
+    private func preferredAction(in actions: [LRAction]) -> LRAction {
+        actions.first { if case .accept = $0 { return true }; return false }
+            ?? actions.first { if case .shift = $0 { return true }; return false }
+            ?? actions[0]
+    }
+
+    private func conflictKind(_ actions: [LRAction]) -> LRConflict.Kind {
+        let shifts = actions.filter { if case .shift = $0 { return true }; return false }.count
+        let reductions = actions.filter { if case .reduce = $0 { return true }; return false }.count
+        if shifts > 0 && reductions > 0 { return .shiftReduce }
+        if reductions > 1 { return .reduceReduce }
+        if shifts > 1 { return .shiftShift }
+        return .accept
+    }
+
+    /// Shortest terminal yield along automaton paths. Nonterminal edges are
+    /// weighted by their shortest derivable terminal sequence.
+    private func shortestPrefixes(transitions: [LRTransition]) -> [Int: [Terminal]] {
+        var yields: [NonTerminal: [Terminal]] = [:]
+        var changed = true
+        while changed {
+            changed = false
+            for production in grammar.productions {
+                var candidate: [Terminal] = []
+                var known = true
+                for symbol in production.rule {
+                    switch symbol {
+                    case .terminal(let terminal): if !terminal.isEmpty { candidate.append(terminal) }
+                    case .nonTerminal(let nonterminal):
+                        guard let value = yields[nonterminal] else { known = false; break }
+                        candidate += value
+                    case .metaSymbol: known = false
+                    }
+                    if !known { break }
+                }
+                if known, yields[production.goal] == nil || candidate.count < yields[production.goal]!.count {
+                    yields[production.goal] = candidate
+                    changed = true
+                }
+            }
+        }
+
+        var best: [Int: [Terminal]] = [0: []]
+        var pending = [0]
+        while !pending.isEmpty {
+            let source = pending.removeFirst()
+            for edge in transitions where edge.source == source {
+                let addition: [Terminal]
+                switch edge.symbol {
+                case .terminal(let terminal): addition = terminal.isEmpty ? [] : [terminal]
+                case .nonTerminal(let nonterminal): guard let value = yields[nonterminal] else { continue }; addition = value
+                case .metaSymbol: continue
+                }
+                let candidate = best[source, default: []] + addition
+                if best[edge.target] == nil || candidate.count < best[edge.target]!.count {
+                    best[edge.target] = candidate
+                    pending.append(edge.target)
+                }
+            }
+        }
+        return best
+    }
     
     private func addShift(to table: inout LRTable, state: Int, terminal: Terminal, target: Int) {
         if let existing = table.action[state]?[terminal] {

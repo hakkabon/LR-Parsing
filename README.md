@@ -16,7 +16,7 @@ A Swift package implementing a family of bottom-up **LR parsers** — LR(0), SLR
 - [Grammar Formats](#grammar-formats)
 - [Parsing Algorithms](#parsing-algorithms)
 - [Parse Tree API](#parse-tree-api)
-- [Command-Line Tool (gtool)](#command-line-tool-gtool)
+- [Command-Line Tool (lr-gtool)](#command-line-tool-lr-gtool)
 - [Architecture](#architecture)
 - [Improvements & Known Limitations](#improvements--known-limitations)
 - [Installation](#installation)
@@ -46,8 +46,14 @@ LR parsers are **shift-reduce** parsers that read input left-to-right and produc
 - **`TokenStream` integration** — drives from either GrammarTokenizer's hand-written tokenizer (`parse(_ string:)`, the default) or a DFA lexer bootstrapped from a `GrammarVocabulary` (`parse(stream:)`), interchangeably
 - **Graphviz export** — render any parse tree as a PDF via `dot`
 - **Colorized terminal output** via `TerminalColors`
-- **Conflict detection** — shift/reduce and reduce/reduce conflicts are detected during table generation and reported with state context
-- **`gtool` CLI** — a standalone command-line executable for quick grammar experimentation
+- **Published generation artifacts** — states, items, transitions, ACTION/GOTO
+  tables, conflicts, and shortest terminal witnesses are available through
+  `LRParser.generate()`
+- **Structured parser outcomes** — diagnostics and recovery edits distinguish
+  clean acceptance, recovered acceptance, and rejection
+- **Recovery policies** — panic-mode synchronization and bounded single-token
+  local repair are available through `parseOutcome`
+- **`lr-gtool` CLI** — a standalone command-line executable for quick grammar experimentation
 
 ---
 
@@ -91,6 +97,28 @@ let labeled = try parser.syntaxTree(for: source)
                         .mapLeafs { range in String(source[range]) }
 print(labeled)
 ```
+
+### Inspect generation and parse with recovery
+
+```swift
+let artifact = parser.generate()
+print(artifact.states[0])
+for conflict in artifact.conflicts {
+    print(conflict, conflict.witness)
+}
+
+let outcome = try parser.parseOutcome(
+    "id + + id",
+    recovery: .localRepair(maxEdits: 2)
+)
+print(outcome.status)
+print(outcome.diagnostics)
+print(outcome.recoveryEdits)
+```
+
+Generation never discards a conflicted automaton. The artifact retains all
+conflicts for inspection; strict `syntaxTree(for:)` refuses to run a conflicted
+table.
 
 ### 4. Parsing a `TokenStream` directly
 
@@ -205,19 +233,19 @@ tree.leafs     // [Leaf]       — all leaves in order
 
 ---
 
-## Command-Line Tool (gtool)
+## Command-Line Tool (lr-gtool)
 
 Build and run the included CLI:
 
 ```bash
 swift build -c release
-.build/release/gtool --help
+.build/release/lr-gtool --help
 ```
 
 ### Usage
 
 ```
-gtool parse <grammar-file> [options]
+lr-gtool parse <grammar-file> [options]
 
 Arguments:
   <grammar-file>     Path to the grammar file (.bnf | .ebnf | .wsn | .gen)
@@ -233,10 +261,10 @@ Options:
 
 ```bash
 # Parse an expression, display as ASCII tree
-gtool parse expr.bnf --start expr --method lalr --input "id + id * id" --analysis tree
+lr-gtool parse expr.bnf --start expr --method lalr --input "id + id * id" --analysis tree
 
 # Parse from a file, open a PDF parse-tree diagram
-gtool parse expr.bnf --start expr --method lr1 --input ./sample.txt --analysis graph
+lr-gtool parse expr.bnf --start expr --method lr1 --input ./sample.txt --analysis graph
 ```
 
 ---
@@ -260,7 +288,7 @@ LR-Parsing/
 │   │       ├── SyntaxError.swift         # Structured error with line/column info
 │   │       ├── SyntaxTreePrinter.swift   # Colorized ASCII tree renderer
 │   │       └── SyntaxTreeGraphviz.swift  # DOT/Graphviz exporter
-│   └── gtool/
+│   └── gtool/                     # lr-gtool executable target sources
 │       ├── GrammarTool.swift         # CLI entry point (ArgumentParser)
 │       ├── Parse.swift               # `parse` subcommand implementation
 │       └── Definitions.swift         # CLI enums: Notation, Method, Analysis, Source

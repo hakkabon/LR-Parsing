@@ -9,12 +9,18 @@
 import Foundation
 import Grammar
 
-struct LRItem: Hashable, CustomStringConvertible {
-    let production: Production
-    let dotIndex: Int
+public struct LRItem: Hashable, CustomStringConvertible {
+    public let production: Production
+    public let dotIndex: Int
     
     // Lookahead set. Empty for LR(0)/SLR. Populated for LR(1)/LALR.
-    var lookahead: Set<Symbol> = []
+    public var lookahead: Set<Symbol> = []
+
+    public init(production: Production, dotIndex: Int, lookahead: Set<Symbol> = []) {
+        self.production = production
+        self.dotIndex = dotIndex
+        self.lookahead = lookahead
+    }
 
     // Helper for LALR merging: identifies items by rule position only
     struct Core: Hashable {
@@ -24,7 +30,7 @@ struct LRItem: Hashable, CustomStringConvertible {
     
     var core: Core { return Core(production: production, dotIndex: dotIndex) }
 
-    var nextSymbol: Symbol? {
+    public var nextSymbol: Symbol? {
         if dotIndex < production.rule.count { return production.rule[dotIndex] }
         return nil
     }
@@ -38,7 +44,7 @@ struct LRItem: Hashable, CustomStringConvertible {
         return LRItem(production: production, dotIndex: dotIndex, lookahead: newLookahead)
     }
     
-    var description: String {
+    public var description: String {
         var ruleStr = ""
         for (i, sym) in production.rule.enumerated() {
             if i == dotIndex { ruleStr += "• " }

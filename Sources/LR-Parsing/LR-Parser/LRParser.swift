@@ -8,17 +8,18 @@
 
 import Foundation
 import Grammar
+import Parser
 import Lexer
 import OSLog
 
-enum LRParseError: Error, CustomStringConvertible {
+public enum LRParseError: Error, CustomStringConvertible {
     case generationFailed(String)
     case tokenError(String)
     case unexpectedToken(token: String, state: Int)
     case unexpectedEOF(state: Int)
     case internalError(String)
     
-    var description: String {
+    public var description: String {
         switch self {
         case .generationFailed(let msg): return "Parser Generator Failed: \(msg)"
         case .tokenError(let msg): return "Could not extract terminal from token: \(msg)"
@@ -32,7 +33,7 @@ enum LRParseError: Error, CustomStringConvertible {
 public class LRParser: Parser {
     
     
-    public enum Algorithm {
+    public enum Algorithm: String, CaseIterable, Sendable {
         case lr0, slr, lr1, lalr
     }
 
@@ -43,6 +44,9 @@ public class LRParser: Parser {
     public init(grammar: Grammar, algorithm: Algorithm) {
         self.generator = LRTableGenerator(grammar: grammar, algorithm: algorithm)
     }
+
+    /// Generates an inspectable automaton even when the grammar has conflicts.
+    public func generate() -> LRAutomaton { generator.generate() }
     
     struct StackElement {
         let state: Int
@@ -60,6 +64,90 @@ public class LRParser: Parser {
         try parse(stream: TokenizerStream(source: source, symbols: Set(symbols), keywords: []))
     }
 
+    /// Parses with structured diagnostics and optional deterministic recovery.
+    /// Local repair tries a bounded single-token deletion or insertion first;
+    /// panic mode discards input until the current state has a valid action.
+    public func parseOutcome(_ source: String, recovery: RecoveryPolicy = .none) throws -> ParserOutcome {
+        let stream = TokenizerStream(source: source, symbols: Set(symbols), keywords: [])
+        var tokens: [(Terminal, Range<String.Index>?)] = []
+        for index in 0..<stream.count { tokens.append(try stream.terminal(at: index)) }
+        tokens.append((.meta(.eof), nil))
+
+        let automaton = generate()
+        guard automaton.conflicts.isEmpty else {
+            return ParserOutcome(status: .rejected, tree: nil, diagnostics: [
+                ParserDiagnostic(severity: .error, message: "Grammar has \(automaton.conflicts.count) LR conflict(s).")
+            ], recoveryEdits: [])
+        }
+        let table = LRTable(action: automaton.actionTable, gotoTable: automaton.gotoTable)
+        var stack = [StackElement(state: 0, node: .empty)]
+        var position = 0
+        var diagnostics: [ParserDiagnostic] = []
+        var edits: [RecoveryEdit] = []
+
+        while true {
+            guard let state = stack.last?.state else { throw LRParseError.internalError("Stack underflow.") }
+            let terminal = tokens[position].0
+            var action = table.action(for: terminal, in: state)
+            var insertedThisStep = false
+
+            if action == nil {
+                let expected = Set(table.action[state]?.keys ?? Dictionary<Terminal, LRAction>().keys)
+                diagnostics.append(ParserDiagnostic(severity: .error, message: "Unexpected token \(terminal).", state: state, expected: expected))
+                switch recovery {
+                case .none:
+                    return ParserOutcome(status: .rejected, tree: nil, diagnostics: diagnostics, recoveryEdits: edits)
+                case .localRepair(let maximum) where edits.count < maximum:
+                    if position + 1 < tokens.count, table.action(for: tokens[position + 1].0, in: state) != nil {
+                        edits.append(.delete(terminal: terminal, atToken: position))
+                        position += 1
+                        continue
+                    }
+                    if let insertion = table.action[state]?.first(where: { if case .shift = $0.value { return true }; return false }) {
+                        edits.append(.insert(terminal: insertion.key, atToken: position))
+                        action = insertion.value
+                        insertedThisStep = true
+                    } else {
+                        fallthrough
+                    }
+                case .localRepair:
+                    fallthrough
+                case .panic:
+                    let start = position
+                    var skipped: [Terminal] = []
+                    while position < tokens.count - 1, table.action(for: tokens[position].0, in: state) == nil {
+                        skipped.append(tokens[position].0)
+                        position += 1
+                    }
+                    guard !skipped.isEmpty, table.action(for: tokens[position].0, in: state) != nil else {
+                        return ParserOutcome(status: .rejected, tree: nil, diagnostics: diagnostics, recoveryEdits: edits)
+                    }
+                    edits.append(.skip(terminals: skipped, fromToken: start))
+                    continue
+                }
+            }
+
+            guard let selected = action else { continue }
+            switch selected {
+            case .shift(let nextState):
+                let node = insertedThisStep ? ParseTree.empty : (tokens[position].1.map(ParseTree.leaf) ?? .empty)
+                stack.append(StackElement(state: nextState, node: node))
+                if !insertedThisStep { position += 1 }
+            case .reduce(let production):
+                let count = production.rule.count
+                guard stack.count >= count + 1 else { throw LRParseError.internalError("Stack not deep enough for reduction.") }
+                let children = count == 0 ? [] : stack.suffix(count).map(\.node)
+                if count > 0 { stack.removeLast(count) }
+                guard let back = stack.last?.state, let next = table.gotoTable[back]?[production.goal] else {
+                    throw LRParseError.internalError("Missing GOTO after reduction.")
+                }
+                stack.append(StackElement(state: next, node: .node(production.goal, children: children)))
+            case .accept:
+                return ParserOutcome(status: edits.isEmpty ? .accepted : .recovered, tree: stack.last?.node, diagnostics: diagnostics, recoveryEdits: edits)
+            }
+        }
+    }
+
     /// Runs the shift/reduce loop against any `TokenStream` — the DFA-driven
     /// `LexerTokenStream` (built via a `LexerBuilder` bootstrapped from a
     /// `GrammarVocabulary`) and the hand-written `TokenizerStream` are both
@@ -71,9 +159,11 @@ public class LRParser: Parser {
         // Generate Tables
         // In a real scenario, you might generate these once in 'init' and throw there,
         // but checking here ensures safety.
-        guard let (table, statesDebug) = generator.generate() else {
+        let automaton = generator.generate()
+        guard automaton.conflicts.isEmpty else {
             throw LRParseError.generationFailed("Grammar contains conflicts (not LR-compliant).")
         }
+        let table = LRTable(action: automaton.actionTable, gotoTable: automaton.gotoTable)
 
         var cursor = StreamCursor(stream: stream)
 
@@ -95,8 +185,6 @@ public class LRParser: Parser {
                 if case .meta(.eof) = terminal {
                     throw LRParseError.unexpectedEOF(state: currentStateId)
                 } else {
-                    print("Syntax Error: Unexpected token \(terminal) in state \(currentStateId)")
-                    print("State Items: \(statesDebug[currentStateId]!)")
                     throw LRParseError.unexpectedToken(token: "\(terminal)", state: currentStateId)
                 }
             }

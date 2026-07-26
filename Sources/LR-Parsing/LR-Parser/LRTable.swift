@@ -10,12 +10,20 @@ import Foundation
 import Grammar
 
 /// A simple structure to hold the generated tables
-struct LRTable {
+public typealias LRActionTable = [Int: [Terminal: LRAction]]
+public typealias LRGotoTable = [Int: [NonTerminal: Int]]
+
+public struct LRTable {
     // Action: (State ID, Terminal) -> Action
-    var action: [Int: [Terminal: LRAction]] = [:]
+    public var action: LRActionTable = [:]
     
     // Goto: (State ID, NonTerminal) -> Next State ID
-    var gotoTable: [Int: [NonTerminal: Int]] = [:]
+    public var gotoTable: LRGotoTable = [:]
+
+    public init(action: LRActionTable = [:], gotoTable: LRGotoTable = [:]) {
+        self.action = action
+        self.gotoTable = gotoTable
+    }
 
     /// Looks up the action for `token` in `state`.
     ///
@@ -30,7 +38,7 @@ struct LRTable {
     /// `action[state]?[token]` subscript would silently miss every lexical
     /// terminal. This checks the direct (fast, common) path first, then falls
     /// back to a `matches(_:)` scan of that state's actions.
-    func action(for token: Terminal, in state: Int) -> LRAction? {
+    public func action(for token: Terminal, in state: Int) -> LRAction? {
         guard let actionsForState = action[state] else { return nil }
         if let direct = actionsForState[token] {
             return direct

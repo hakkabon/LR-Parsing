@@ -10,12 +10,12 @@ import Foundation
 import Grammar
 
 /// The operations the parser can take
-enum LRAction: CustomStringConvertible {
+public enum LRAction: Hashable, CustomStringConvertible {
     case shift(Int)          // Shift input, go to State ID
     case reduce(Production)  // Reduce stack using Production
     case accept              // Successfully parsed
     
-    var description: String {
+    public var description: String {
         switch self {
         case .shift(let s): return "s\(s)"
         case .reduce(let p): return "r(\(p.goal))"
