@@ -62,6 +62,14 @@ public struct LRConflict: Hashable, CustomStringConvertible {
     }
 }
 
+extension LRConflict: Comparable {
+    
+    public static func < (lhs: LRConflict, rhs: LRConflict) -> Bool {
+        return lhs.state == rhs.state ? lhs.lookahead.lrStableKey < rhs.lookahead.lrStableKey : lhs.state < rhs.state
+    }
+}
+
+
 /// Complete output of LR generation. Conflicted grammars still produce this
 /// artifact so diagnostics and states remain inspectable.
 public struct LRAutomaton {
