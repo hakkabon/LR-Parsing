@@ -51,6 +51,11 @@ LR parsers are **shift-reduce** parsers that read input left-to-right and produc
   `LRParser.generate()`
 - **Structured parser outcomes** — diagnostics and recovery edits distinguish
   clean acceptance, recovered acceptance, and rejection
+- **Stable artifact identity** — productions, items, states, transitions, and
+  conflicts carry deterministic semantic IDs; canonical generation ordering
+  also keeps numeric state indices stable across repeated generation
+- **Opt-in parser tracing** — structured start, lookahead inspection, shift,
+  reduce, error, recovery, and accept events retain stable artifact references
 - **Recovery policies** — panic-mode synchronization and bounded single-token
   local repair are available through `parseOutcome`
 - **`lr-gtool` CLI** — a standalone command-line executable for quick grammar experimentation
@@ -115,6 +120,22 @@ print(outcome.status)
 print(outcome.diagnostics)
 print(outcome.recoveryEdits)
 ```
+
+Enable structured runtime tracing when a replayable execution record is needed:
+
+```swift
+let traced = try parser.parseOutcome("id + id", tracing: true)
+for event in traced.trace {
+    print(event)
+    print(event.state.identity)
+    print(event.productionIdentity as Any)
+}
+```
+
+Tracing is disabled by default. Artifact IDs are semantic strings and never use
+Swift's process-randomized `Hasher`; they are suitable for cross-references,
+snapshots, and future incremental-parser checkpoints. Identical duplicate
+productions intentionally share one semantic production identity.
 
 Generation never discards a conflicted automaton. The artifact retains all
 conflicts for inspection; strict `syntaxTree(for:)` refuses to run a conflicted

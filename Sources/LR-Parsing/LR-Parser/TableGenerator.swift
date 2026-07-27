@@ -66,7 +66,7 @@ public final class LRTableGenerator {
             // Group items by their next symbol to determine transitions
             let nextSymbols = Set(items.compactMap { $0.nextSymbol })
             
-            for symbol in nextSymbols {
+            for symbol in nextSymbols.sorted(by: { $0.lrStableKey < $1.lrStableKey }) {
                 // Calculate destination state
                 let nextStateItems = gotoState(items, symbol)
                 
@@ -94,7 +94,7 @@ public final class LRTableGenerator {
             }
             
             // --- B. REDUCE ACTIONS ---
-            for item in items {
+            for item in items.sorted(by: { $0.identity < $1.identity }) {
                 // If dot is at end: A -> α •
                 if item.nextSymbol == nil {
                     if item.production.goal == augmentedStart {
@@ -104,7 +104,7 @@ public final class LRTableGenerator {
                         // Determine which terminals trigger reduction
                         let reduceTerminals = getReduceTerminals(for: item, at: item.production.goal)
                         
-                        for term in reduceTerminals {
+                        for term in reduceTerminals.sorted(by: { $0.lrStableKey < $1.lrStableKey }) {
                             if case .meta(let m) = term, m == .eps { continue } // Never reduce on epsilon
                             
                             add(.reduce(item.production), state: stateId, terminal: term, candidates: &candidates)
@@ -115,22 +115,32 @@ public final class LRTableGenerator {
         }
         
         var rawConflicts: [(Int, Terminal, [LRAction])] = []
-        for (state, entries) in candidates {
-            for (terminal, actions) in entries {
+        for state in candidates.keys.sorted() {
+            for terminal in candidates[state, default: [:]].keys.sorted(by: { $0.lrStableKey < $1.lrStableKey }) {
+                let actions = candidates[state]?[terminal] ?? []
                 let unique = actions.reduce(into: [LRAction]()) { if !$0.contains($1) { $0.append($1) } }
                 table.action[state, default: [:]][terminal] = preferredAction(in: unique)
                 if unique.count > 1 { rawConflicts.append((state, terminal, unique)) }
             }
         }
         let prefixes = shortestPrefixes(transitions: transitions)
+        let stateArtifacts = states.enumerated().map { LRState(id: $0.offset, items: $0.element) }
+        let stateIdentities = Dictionary(uniqueKeysWithValues: stateArtifacts.map { ($0.id, $0.identity) })
         let conflicts = rawConflicts.map { state, terminal, actions in
             var witness = prefixes[state] ?? []
             if terminal != .meta(.eof) { witness.append(terminal) }
-            return LRConflict(kind: conflictKind(actions), state: state, lookahead: terminal, actions: actions, witness: witness)
-        }.sorted { ($0.state, $0.lookahead.description) < ($1.state, $1.lookahead.description) }
+            let identity = LRArtifactID(rawValue: "conflict:\(stateIdentities[state]?.rawValue ?? String(state)):\(terminal.lrStableKey):\(actions.map(\.lrStableKey).sorted().joined(separator: "|"))")
+            return LRConflict(kind: conflictKind(actions), state: state, lookahead: terminal, actions: actions, witness: witness, identity: identity)
+        }.sorted { lhs, rhs in
+            lhs.state == rhs.state ? lhs.lookahead.lrStableKey < rhs.lookahead.lrStableKey : lhs.state < rhs.state
+        }
         return LRAutomaton(
-            states: states.enumerated().map { LRState(id: $0.offset, items: $0.element) },
-            transitions: transitions,
+            states: stateArtifacts,
+            transitions: transitions.map { transition in
+                let source = stateIdentities[transition.source]?.rawValue ?? String(transition.source)
+                let target = stateIdentities[transition.target]?.rawValue ?? String(transition.target)
+                return LRTransition(source: transition.source, symbol: transition.symbol, target: transition.target, identity: LRArtifactID(rawValue: "transition:\(source)-\(transition.symbol.lrStableKey)->\(target)"))
+            }.sorted { $0.identity < $1.identity },
             actionTable: table.action,
             gotoTable: table.gotoTable,
             conflicts: conflicts
@@ -180,7 +190,7 @@ public final class LRTableGenerator {
             let current = states[processed]
             let symbols = Set(current.compactMap { $0.nextSymbol })
             
-            for sym in symbols {
+            for sym in symbols.sorted(by: { $0.lrStableKey < $1.lrStableKey }) {
                 let next = gotoState(current, sym)
                 if !next.isEmpty && !states.contains(next) {
                     states.append(next)
@@ -203,7 +213,7 @@ public final class LRTableGenerator {
             let current = states[processed]
             let symbols = Set(current.compactMap { $0.nextSymbol })
             
-            for sym in symbols {
+            for sym in symbols.sorted(by: { $0.lrStableKey < $1.lrStableKey }) {
                 let next = gotoStateLR1(current, sym)
                 if !next.isEmpty && !states.contains(next) {
                     states.append(next)

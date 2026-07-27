@@ -43,12 +43,14 @@ public struct ParserOutcome {
     public let tree: ParseTree?
     public let diagnostics: [ParserDiagnostic]
     public let recoveryEdits: [RecoveryEdit]
+    public let trace: [LRParserTraceEvent]
 
-    public init(status: ParserOutcomeStatus, tree: ParseTree?, diagnostics: [ParserDiagnostic], recoveryEdits: [RecoveryEdit]) {
+    public init(status: ParserOutcomeStatus, tree: ParseTree?, diagnostics: [ParserDiagnostic], recoveryEdits: [RecoveryEdit], trace: [LRParserTraceEvent] = []) {
         self.status = status
         self.tree = tree
         self.diagnostics = diagnostics
         self.recoveryEdits = recoveryEdits
+        self.trace = trace
     }
 }
 

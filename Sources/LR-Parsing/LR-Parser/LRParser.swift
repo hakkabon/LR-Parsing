@@ -67,7 +67,7 @@ public class LRParser: Parser {
     /// Parses with structured diagnostics and optional deterministic recovery.
     /// Local repair tries a bounded single-token deletion or insertion first;
     /// panic mode discards input until the current state has a valid action.
-    public func parseOutcome(_ source: String, recovery: RecoveryPolicy = .none) throws -> ParserOutcome {
+    public func parseOutcome(_ source: String, recovery: RecoveryPolicy = .none, tracing: Bool = false) throws -> ParserOutcome {
         let stream = TokenizerStream(source: source, symbols: Set(symbols), keywords: [])
         var tokens: [(Terminal, Range<String.Index>?)] = []
         for index in 0..<stream.count { tokens.append(try stream.terminal(at: index)) }
@@ -84,27 +84,42 @@ public class LRParser: Parser {
         var position = 0
         var diagnostics: [ParserDiagnostic] = []
         var edits: [RecoveryEdit] = []
+        var trace: [LRParserTraceEvent] = []
+
+        func stateReference(_ index: Int) -> LRTraceState {
+            LRTraceState(index: index, identity: automaton.state(index)?.identity ?? LRArtifactID(rawValue: "state-index:\(index)"))
+        }
+        func snapshot() -> [LRTraceStackEntry] { stack.map { LRTraceStackEntry(state: stateReference($0.state)) } }
+        func record(_ kind: LRParserTraceEvent.Kind, tokenIndex: Int, lookahead: Terminal?, state: Int, target: Int? = nil, production: Production? = nil, message: String? = nil) {
+            guard tracing else { return }
+            trace.append(LRParserTraceEvent(step: trace.count, kind: kind, tokenIndex: tokenIndex, lookahead: lookahead, state: stateReference(state), targetState: target.map(stateReference), production: production, stack: snapshot(), message: message))
+        }
+        record(.start, tokenIndex: 0, lookahead: tokens[0].0, state: 0)
 
         while true {
             guard let state = stack.last?.state else { throw LRParseError.internalError("Stack underflow.") }
             let terminal = tokens[position].0
             var action = table.action(for: terminal, in: state)
             var insertedThisStep = false
+            record(.inspect, tokenIndex: position, lookahead: terminal, state: state)
 
             if action == nil {
                 let expected = Set(table.action[state]?.keys ?? Dictionary<Terminal, LRAction>().keys)
                 diagnostics.append(ParserDiagnostic(severity: .error, message: "Unexpected token \(terminal).", state: state, expected: expected))
+                record(.error, tokenIndex: position, lookahead: terminal, state: state, message: "unexpected token")
                 switch recovery {
                 case .none:
-                    return ParserOutcome(status: .rejected, tree: nil, diagnostics: diagnostics, recoveryEdits: edits)
+                    return ParserOutcome(status: .rejected, tree: nil, diagnostics: diagnostics, recoveryEdits: edits, trace: trace)
                 case .localRepair(let maximum) where edits.count < maximum:
                     if position + 1 < tokens.count, table.action(for: tokens[position + 1].0, in: state) != nil {
                         edits.append(.delete(terminal: terminal, atToken: position))
+                        record(.recovery, tokenIndex: position, lookahead: terminal, state: state, message: edits.last?.description)
                         position += 1
                         continue
                     }
                     if let insertion = table.action[state]?.first(where: { if case .shift = $0.value { return true }; return false }) {
                         edits.append(.insert(terminal: insertion.key, atToken: position))
+                        record(.recovery, tokenIndex: position, lookahead: terminal, state: state, message: edits.last?.description)
                         action = insertion.value
                         insertedThisStep = true
                     } else {
@@ -120,9 +135,10 @@ public class LRParser: Parser {
                         position += 1
                     }
                     guard !skipped.isEmpty, table.action(for: tokens[position].0, in: state) != nil else {
-                        return ParserOutcome(status: .rejected, tree: nil, diagnostics: diagnostics, recoveryEdits: edits)
+                        return ParserOutcome(status: .rejected, tree: nil, diagnostics: diagnostics, recoveryEdits: edits, trace: trace)
                     }
                     edits.append(.skip(terminals: skipped, fromToken: start))
+                    record(.recovery, tokenIndex: start, lookahead: terminal, state: state, message: edits.last?.description)
                     continue
                 }
             }
@@ -132,6 +148,7 @@ public class LRParser: Parser {
             case .shift(let nextState):
                 let node = insertedThisStep ? ParseTree.empty : (tokens[position].1.map(ParseTree.leaf) ?? .empty)
                 stack.append(StackElement(state: nextState, node: node))
+                record(.shift, tokenIndex: position, lookahead: insertedThisStep ? nil : terminal, state: state, target: nextState)
                 if !insertedThisStep { position += 1 }
             case .reduce(let production):
                 let count = production.rule.count
@@ -142,8 +159,10 @@ public class LRParser: Parser {
                     throw LRParseError.internalError("Missing GOTO after reduction.")
                 }
                 stack.append(StackElement(state: next, node: .node(production.goal, children: children)))
+                record(.reduce, tokenIndex: position, lookahead: terminal, state: state, target: next, production: production)
             case .accept:
-                return ParserOutcome(status: edits.isEmpty ? .accepted : .recovered, tree: stack.last?.node, diagnostics: diagnostics, recoveryEdits: edits)
+                record(.accept, tokenIndex: position, lookahead: terminal, state: state)
+                return ParserOutcome(status: edits.isEmpty ? .accepted : .recovered, tree: stack.last?.node, diagnostics: diagnostics, recoveryEdits: edits, trace: trace)
             }
         }
     }
