@@ -1,5 +1,14 @@
+//
+//  ParserOutcome.swift
+//  LR-Parsing
+//
+//  Created by Ulf Akerstedt-Inoue on 2026/07/28.
+//  Copyright © 2026 hakkabon software. All rights reserved.
+//
+
 import Foundation
 import Grammar
+import Parser
 
 public enum ParserOutcomeStatus: String, Sendable {
     case accepted

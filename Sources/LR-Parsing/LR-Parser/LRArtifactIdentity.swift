@@ -1,3 +1,11 @@
+//
+//  LRArtifactIdentity.swift
+//  LR-Parsing
+//
+//  Created by Ulf Akerstedt-Inoue on 2026/07/28.
+//  Copyright © 2026 hakkabon software. All rights reserved.
+//
+
 import Grammar
 
 /// A deterministic semantic identifier. Unlike Swift `Hashable` values, its

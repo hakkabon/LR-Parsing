@@ -1,6 +1,6 @@
 //
 //  GrammarTool.swift
-//  Grammar-Tool
+//  LR-Parsing
 //
 //  Created by Ulf Akerstedt-Inoue on 2024/03/16.
 //  Copyright © 2024 hakkabon software. All rights reserved.

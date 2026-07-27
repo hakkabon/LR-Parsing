@@ -16,6 +16,7 @@ import Testing
 import Foundation
 @testable import LR_Parsing
 import Grammar
+import Parser
 
 // ─────────────────────────────────────────────────────────────────
 // MARK: - Shared Grammar Helpers

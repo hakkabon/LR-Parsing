@@ -5,13 +5,10 @@ import PackageDescription
 
 let package = Package(
     name: "LR-Parsing",
-    platforms: [
-        .macOS(.v11),
-        .iOS(.v14),
-    ],
+    platforms: [.macOS(.v11), .iOS(.v14)],
     products: [
         .library(name: "LR-Parsing", targets: ["LR-Parsing"]),
-        .executable(name: "lr-gtool", targets: ["lr-gtool"]),
+        .executable(name: "lr-parse", targets: ["lr-parse"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.6.2"),
@@ -44,7 +41,7 @@ let package = Package(
         ),
         // Move executable target to its destination when library confirmed working.
         .executableTarget(
-            name: "lr-gtool",
+            name: "lr-parse",
             dependencies: [
                 "LR-Parsing",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
@@ -52,7 +49,7 @@ let package = Package(
                 .product(name: "Grammar", package: "Grammar"),
                 .product(name: "GrammarDiagram", package: "GrammarDiagram"),
             ],
-            path: "Sources/gtool"
+            path: "Sources/parse"
         ),
     ]
 )

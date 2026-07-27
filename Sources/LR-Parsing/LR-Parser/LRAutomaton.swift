@@ -1,3 +1,11 @@
+//
+//  LRAutomaton.swift
+//  LR-Parsing
+//
+//  Created by Ulf Akerstedt-Inoue on 2025/11/30.
+//  Copyright © 2025 hakkabon software. All rights reserved.
+//
+
 import Grammar
 
 /// A stable, inspectable state in a generated LR automaton.

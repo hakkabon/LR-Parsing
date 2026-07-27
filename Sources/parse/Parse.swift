@@ -1,6 +1,6 @@
 //
 //  Parse.swift
-//  Grammar-Tool
+//  LR-Parsing
 //
 //  Created by Ulf Akerstedt-Inoue on 2024/03/16.
 //  Copyright © 2024 hakkabon software. All rights reserved.
@@ -9,6 +9,7 @@
 import Foundation
 import ArgumentParser
 import Grammar
+import Parser
 import LR_Parsing
 import ShellOut
 
@@ -43,7 +44,7 @@ extension GrammarTool {
                 try Grammar(bnf: try String(contentsOf: options.grammar), start: options.start)
             }
             
-            let parser: Parser = switch method {
+            let parser = switch method {
             case .lr0: LRParser(grammar: grammar, algorithm: .lr0)
             case .slr: LRParser(grammar: grammar, algorithm: .slr)
             case .lalr: LRParser(grammar: grammar, algorithm: .lalr)
@@ -61,10 +62,9 @@ extension GrammarTool {
             }
         }
         
-        private func runAnalysis(_ analysis: Analysis, parser: Parser, input: String, grammar: Grammar) throws {
+        private func runAnalysis(_ analysis: Analysis, parser: DeterministicParser, input: String, grammar: Grammar) throws {
             
-            switch analysis {
-                
+            switch analysis {                
             case .tree:
                 let parsetree = try parser.syntaxTree(for: input).mapLeafs{ String(input[$0]) }
                 print("\(parsetree)")

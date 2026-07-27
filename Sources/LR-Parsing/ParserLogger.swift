@@ -1,6 +1,6 @@
 //
 //  GrammarLogger.swift
-//  LR-parsing
+//  LR-Parsing
 //
 //  Created by Ulf Akerstedt-Inoue on 2025/09/21.
 //  Copyright © 2025 hakkabon software. All rights reserved.
