@@ -137,22 +137,13 @@ public final class LRTableGenerator {
         for (state, terminal, actions, origins) in rawConflicts {
             var witness = prefixes[state] ?? []
             if terminal != .meta(.eof) { witness.append(terminal) }
-<<<<<<< HEAD
-            let stateIdentitiesStr: String = stateIdentities[state]?.rawValue ?? String(state)
-            let actionStr: String = actions.map(\.lrStableKey).sorted().joined(separator: "|")
-            let identity = LRArtifactID(rawValue: "conflict:\(stateIdentitiesStr):\(terminal.lrStableKey):\(actionStr)")
-            return LRConflict(kind: conflictKind(actions), state: state, lookahead: terminal, actions: actions, witness: witness, identity: identity)
-        }.sorted()
-=======
             let stateKey = stateIdentities[state]?.rawValue ?? String(state)
             let actionKey = actions.map(\.lrStableKey).sorted().joined(separator: "|")
             let identity = LRArtifactID(rawValue: "conflict:\(stateKey):\(terminal.lrStableKey):\(actionKey)")
             conflicts.append(LRConflict(kind: conflictKind(actions), state: state, lookahead: terminal, actions: actions, witness: witness, identity: identity, candidates: origins))
         }
-        conflicts.sort { lhs, rhs in
-            lhs.state == rhs.state ? lhs.lookahead.lrStableKey < rhs.lookahead.lrStableKey : lhs.state < rhs.state
-        }
->>>>>>> dev-branch
+        conflicts.sort()
+
         return LRAutomaton(
             states: stateArtifacts,
             transitions: transitions.map { transition in
