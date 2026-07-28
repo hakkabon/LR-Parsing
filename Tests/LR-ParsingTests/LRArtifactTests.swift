@@ -58,7 +58,74 @@ struct LRArtifactTests {
             }
         }
         let conflict = try #require(artifact.conflicts.first { $0.kind == .shiftReduce })
-        #expect(conflict.decision?.resolution == .preferShift)
+        #expect(conflict.decision?.resolution == .preferShiftFallback)
+        #expect(conflict.status == .unresolved)
+    }
+
+    @Test("left associativity resolves a shift-reduce conflict")
+    func leftAssociativity() throws {
+        let minus = Terminal(string: "-")
+        let grammar = try Grammar(bnf: "<E> ::= <E> \"-\" <E> | \"id\"", start: "E")
+        let precedence = LRPrecedenceSpecification(levels: [
+            LRPrecedenceLevel(1, associativity: .left, terminals: [minus])
+        ])
+        let parser = LRParser(grammar: grammar, algorithm: .lalr, precedence: precedence)
+        let artifact = parser.generate()
+
+        #expect(artifact.unresolvedConflicts.isEmpty)
+        #expect(artifact.resolvedConflicts.count == 1)
+        #expect(artifact.resolvedConflicts[0].decision?.resolution == .leftAssociative(level: 1))
+        if case .reduce = artifact.resolvedConflicts[0].decision?.selectedAction {} else { Issue.record("Expected left associativity to reduce") }
+        #expect(parser.recognizes("id - id - id"))
+    }
+
+    @Test("right associativity resolves a shift-reduce conflict")
+    func rightAssociativity() throws {
+        let power = Terminal(string: "^")
+        let grammar = try Grammar(bnf: "<E> ::= <E> \"^\" <E> | \"id\"", start: "E")
+        let precedence = LRPrecedenceSpecification(levels: [
+            LRPrecedenceLevel(1, associativity: .right, terminals: [power])
+        ])
+        let artifact = LRParser(grammar: grammar, algorithm: .lalr, precedence: precedence).generate()
+
+        #expect(artifact.unresolvedConflicts.isEmpty)
+        #expect(artifact.resolvedConflicts[0].decision?.resolution == .rightAssociative(level: 1))
+        if case .shift = artifact.resolvedConflicts[0].decision?.selectedAction {} else { Issue.record("Expected right associativity to shift") }
+    }
+
+    @Test("non-associativity resolves to an error ACTION cell")
+    func nonAssociativity() throws {
+        let less = Terminal(string: "<")
+        let grammar = try Grammar(bnf: "<E> ::= <E> \"<\" <E> | \"id\"", start: "E")
+        let precedence = LRPrecedenceSpecification(levels: [
+            LRPrecedenceLevel(1, associativity: .nonAssociative, terminals: [less])
+        ])
+        let parser = LRParser(grammar: grammar, algorithm: .lalr, precedence: precedence)
+        let artifact = parser.generate()
+        let conflict = try #require(artifact.resolvedConflicts.first)
+
+        #expect(conflict.decision?.resolution == .nonAssociative(level: 1))
+        #expect(conflict.decision?.selectedAction == nil)
+        #expect(artifact.actionTable[conflict.state]?[conflict.lookahead] == nil)
+        #expect(!parser.recognizes("id < id < id"))
+    }
+
+    @Test("higher terminal precedence resolves expression conflicts")
+    func precedenceLevels() throws {
+        let plus = Terminal(string: "+")
+        let star = Terminal(string: "*")
+        let grammar = try Grammar(bnf: "<E> ::= <E> \"+\" <E> | <E> \"*\" <E> | \"id\"", start: "E")
+        let precedence = LRPrecedenceSpecification(levels: [
+            LRPrecedenceLevel(1, associativity: .left, terminals: [plus]),
+            LRPrecedenceLevel(2, associativity: .left, terminals: [star])
+        ])
+        let parser = LRParser(grammar: grammar, algorithm: .lalr, precedence: precedence)
+        let artifact = parser.generate()
+
+        #expect(artifact.conflicts.count == 4)
+        #expect(artifact.unresolvedConflicts.isEmpty)
+        #expect(artifact.resolvedConflicts.allSatisfy { $0.status == .resolved })
+        #expect(parser.recognizes("id + id * id"))
     }
 
     @Test("shortest conflict witness replays to its decision point")

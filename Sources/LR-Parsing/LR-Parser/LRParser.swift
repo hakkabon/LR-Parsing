@@ -41,8 +41,8 @@ public class LRParser: Parser {
     let symbols = ["|", "\\", "^", ":", ",", "$", ".", "\"", "¶", ">", "#", "+", "-", "{","[", "<", "(",
                    "'", "}", "]", ":]", ")", ";", "/", "*", "?", "??", ":=", "="]
 
-    public init(grammar: Grammar, algorithm: Algorithm) {
-        self.generator = LRTableGenerator(grammar: grammar, algorithm: algorithm)
+    public init(grammar: Grammar, algorithm: Algorithm, precedence: LRPrecedenceSpecification? = nil) {
+        self.generator = LRTableGenerator(grammar: grammar, algorithm: algorithm, precedence: precedence)
     }
 
     /// Generates an inspectable automaton even when the grammar has conflicts.
@@ -74,9 +74,9 @@ public class LRParser: Parser {
         tokens.append((.meta(.eof), nil))
 
         let automaton = generate()
-        guard automaton.conflicts.isEmpty else {
+        guard automaton.unresolvedConflicts.isEmpty else {
             return ParserOutcome(status: .rejected, tree: nil, diagnostics: [
-                ParserDiagnostic(severity: .error, message: "Grammar has \(automaton.conflicts.count) LR conflict(s).")
+                ParserDiagnostic(severity: .error, message: "Grammar has \(automaton.unresolvedConflicts.count) unresolved LR conflict(s).")
             ], recoveryEdits: [])
         }
         let table = LRTable(action: automaton.actionTable, gotoTable: automaton.gotoTable)
@@ -179,8 +179,8 @@ public class LRParser: Parser {
         // In a real scenario, you might generate these once in 'init' and throw there,
         // but checking here ensures safety.
         let automaton = generator.generate()
-        guard automaton.conflicts.isEmpty else {
-            throw LRParseError.generationFailed("Grammar contains conflicts (not LR-compliant).")
+        guard automaton.unresolvedConflicts.isEmpty else {
+            throw LRParseError.generationFailed("Grammar contains unresolved conflicts (not LR-compliant).")
         }
         let table = LRTable(action: automaton.actionTable, gotoTable: automaton.gotoTable)
 
