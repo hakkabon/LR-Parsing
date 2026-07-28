@@ -1,5 +1,6 @@
 import Testing
 import Grammar
+import Parser
 @testable import LR_Parsing
 
 private struct TestConflictPolicy: LRConflictResolutionPolicy {

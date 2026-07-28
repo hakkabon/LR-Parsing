@@ -31,11 +31,7 @@ public enum LRParseError: Error, CustomStringConvertible {
 }
 
 public class LRParser: DeterministicParser {
-<<<<<<< HEAD
-=======
-    
->>>>>>> dev-branch
-    
+
     public enum Algorithm: String, CaseIterable, Sendable {
         case lr0, slr, lr1, lalr
     }

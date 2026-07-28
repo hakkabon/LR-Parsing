@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 //
 //  ParserOutcome.swift
 //  LR-Parsing
@@ -8,9 +7,6 @@
 //
 
 import Foundation
-import Grammar
-=======
->>>>>>> dev-branch
 import Parser
 
 /// LR specialization of the parser-independent deterministic result.

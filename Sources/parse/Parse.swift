@@ -44,11 +44,7 @@ extension GrammarTool {
                 try Grammar(bnf: try String(contentsOf: options.grammar), start: options.start)
             }
             
-<<<<<<< HEAD:Sources/parse/Parse.swift
             let parser = switch method {
-=======
-            let parser: DeterministicParser = switch method {
->>>>>>> dev-branch:Sources/gtool/Parse.swift
             case .lr0: LRParser(grammar: grammar, algorithm: .lr0)
             case .slr: LRParser(grammar: grammar, algorithm: .slr)
             case .lalr: LRParser(grammar: grammar, algorithm: .lalr)
