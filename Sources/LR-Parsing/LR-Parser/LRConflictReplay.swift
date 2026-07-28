@@ -45,6 +45,36 @@ public struct LRConflictReplay {
     }
 }
 
+public enum LRConflictBranchOutcome: Hashable, CustomStringConvertible {
+    case accepted
+    case rejected(String)
+    case stepLimit(Int)
+
+    public var description: String {
+        switch self {
+        case .accepted: "accepted"
+        case .rejected(let reason): "rejected: \(reason)"
+        case .stepLimit(let limit): "stopped after \(limit) steps"
+        }
+    }
+}
+
+/// Continuation produced by forcing one competing action at the conflict cell,
+/// then following the generated table decisions.
+public struct LRConflictBranchReplay {
+    public let action: LRAction
+    public let wasSelected: Bool
+    public let steps: [LRConflictReplayStep]
+    public let outcome: LRConflictBranchOutcome
+
+    public init(action: LRAction, wasSelected: Bool, steps: [LRConflictReplayStep], outcome: LRConflictBranchOutcome) {
+        self.action = action
+        self.wasSelected = wasSelected
+        self.steps = steps
+        self.outcome = outcome
+    }
+}
+
 public extension LRAutomaton {
     /// Replays the shortest witness using the generated ACTION decisions and
     /// stops immediately before the conflicted cell is executed.
@@ -91,5 +121,67 @@ public extension LRAutomaton {
             }
         }
         return result(false, "replay exceeded \(maximumSteps) steps")
+    }
+
+    /// Reaches the conflict once, then forces each distinct competing action
+    /// and continues with the generated table until acceptance or rejection.
+    func replayBranches(_ conflict: LRConflict, maximumSteps: Int = 10_000) -> [LRConflictBranchReplay] {
+        let prefix = replay(conflict, maximumSteps: maximumSteps)
+        guard prefix.reachedConflict, let point = prefix.steps.last else { return [] }
+
+        func reference(_ state: Int) -> LRTraceState {
+            LRTraceState(index: state, identity: self.state(state)?.identity ?? LRArtifactID(rawValue: "state-index:\(state)"))
+        }
+
+        return conflict.actions.map { forcedAction in
+            var stack = point.stack.map(\.index)
+            var tokenIndex = point.tokenIndex
+            var steps = prefix.steps
+
+            func apply(_ action: LRAction) -> LRConflictBranchOutcome? {
+                guard let state = stack.last else { return .rejected("parser stack underflow") }
+                let lookahead = tokenIndex < conflict.witness.count ? conflict.witness[tokenIndex] : Terminal.meta(.eof)
+                let kind: LRConflictReplayStep.Kind
+                switch action {
+                case .shift: kind = .shift
+                case .reduce: kind = .reduce
+                case .accept: kind = .accept
+                }
+                steps.append(LRConflictReplayStep(index: steps.count, kind: kind, tokenIndex: tokenIndex, lookahead: lookahead, state: reference(state), stack: stack.map(reference), action: action))
+                switch action {
+                case .shift(let target):
+                    stack.append(target)
+                    tokenIndex += 1
+                    return nil
+                case .reduce(let production):
+                    guard stack.count > production.rule.count else { return .rejected("stack underflow reducing by \(production)") }
+                    if !production.rule.isEmpty { stack.removeLast(production.rule.count) }
+                    guard let previous = stack.last, let target = gotoTable[previous]?[production.goal] else {
+                        return .rejected("missing GOTO after reducing by \(production)")
+                    }
+                    stack.append(target)
+                    return nil
+                case .accept:
+                    return .accepted
+                }
+            }
+
+            var outcome = apply(forcedAction)
+            while outcome == nil, steps.count < maximumSteps {
+                guard let state = stack.last else { outcome = .rejected("parser stack underflow"); break }
+                let lookahead = tokenIndex < conflict.witness.count ? conflict.witness[tokenIndex] : Terminal.meta(.eof)
+                guard let action = actionTable[state]?[lookahead] else {
+                    outcome = .rejected("no ACTION for state \(state) on \(lookahead)")
+                    break
+                }
+                outcome = apply(action)
+            }
+            return LRConflictBranchReplay(
+                action: forcedAction,
+                wasSelected: conflict.decision?.selectedAction == forcedAction,
+                steps: steps,
+                outcome: outcome ?? .stepLimit(maximumSteps)
+            )
+        }
     }
 }

@@ -191,6 +191,12 @@ associativity, and an error ACTION cell for non-associativity. Strict parsing is
 allowed when `unresolvedConflicts` is empty; deterministic fallback decisions
 remain unresolved and continue to block it.
 
+The artifact stores unresolved and resolved cells separately. `conflicts` (and
+its compatibility alias `unresolvedConflicts`) contains only conflicts that
+still block parsing. `resolvedConflicts` and `resolvedDecisions` contain
+intentional precedence or policy results. Use `allConflicts` when an inspector
+needs one stable, sorted combined view.
+
 Application-specific policies can resolve cells not covered by precedence:
 
 ```swift
@@ -214,6 +220,12 @@ explanation. Declared precedence is applied before the general policy.
 those decisions and stops before the conflicted cell is applied. Its structured
 result contains stack/state steps, the decision reached, and a failure reason if
 the witness cannot reach the advertised state.
+
+`LRAutomaton.replayBranches(_:)` starts from that same stack and token position,
+forces each distinct competing action once, and then follows generated table
+decisions until acceptance, rejection, or a step bound. Each
+`LRConflictBranchReplay` identifies the forced action, whether it was the
+selected decision, its complete steps, and its outcome.
 
 ### 4. Parsing a `TokenStream` directly
 
