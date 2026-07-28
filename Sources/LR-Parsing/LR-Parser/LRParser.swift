@@ -31,6 +31,10 @@ public enum LRParseError: Error, CustomStringConvertible {
 }
 
 public class LRParser: DeterministicParser {
+<<<<<<< HEAD
+=======
+    
+>>>>>>> dev-branch
     
     public enum Algorithm: String, CaseIterable, Sendable {
         case lr0, slr, lr1, lalr
@@ -66,7 +70,7 @@ public class LRParser: DeterministicParser {
     /// Parses with structured diagnostics and optional deterministic recovery.
     /// Local repair tries a bounded single-token deletion or insertion first;
     /// panic mode discards input until the current state has a valid action.
-    public func parseOutcome(_ source: String, recovery: RecoveryPolicy = .none, tracing: Bool = false) throws -> ParserOutcome {
+    public func parseOutcome(_ source: String, recovery: RecoveryPolicy = .none, tracing: Bool = false) throws -> LRParseResult {
         let stream = TokenizerStream(source: source, symbols: Set(symbols), keywords: [])
         var tokens: [(Terminal, Range<String.Index>?)] = []
         for index in 0..<stream.count { tokens.append(try stream.terminal(at: index)) }
@@ -74,8 +78,8 @@ public class LRParser: DeterministicParser {
 
         let automaton = generate()
         guard automaton.unresolvedConflicts.isEmpty else {
-            return ParserOutcome(status: .rejected, tree: nil, diagnostics: [
-                ParserDiagnostic(severity: .error, message: "Grammar has \(automaton.unresolvedConflicts.count) unresolved LR conflict(s).")
+            return LRParseResult(status: .rejected, tree: nil, diagnostics: [
+                ParserDiagnostic(reason: .grammarConflict, message: "Grammar has \(automaton.unresolvedConflicts.count) unresolved LR conflict(s).", source: source)
             ], recoveryEdits: [])
         }
         let table = LRTable(action: automaton.actionTable, gotoTable: automaton.gotoTable)
@@ -104,7 +108,15 @@ public class LRParser: DeterministicParser {
 
             if action == nil {
                 let expected = Set(table.action[state]?.keys ?? Dictionary<Terminal, LRAction>().keys)
-                diagnostics.append(ParserDiagnostic(severity: .error, message: "Unexpected token \(terminal).", state: state, expected: expected))
+                diagnostics.append(ParserDiagnostic(
+                    reason: terminal == .meta(.eof) ? .prematureEndOfInput : .unexpectedToken,
+                    message: "Unexpected token \(terminal).",
+                    range: tokens[position].1,
+                    expected: Array(expected),
+                    found: terminal,
+                    parserState: state,
+                    source: source
+                ))
                 record(.error, tokenIndex: position, lookahead: terminal, state: state, message: "unexpected token")
                 switch recovery {
                 case .none:

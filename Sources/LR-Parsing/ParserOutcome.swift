@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 //
 //  ParserOutcome.swift
 //  LR-Parsing
@@ -8,60 +9,17 @@
 
 import Foundation
 import Grammar
+=======
+>>>>>>> dev-branch
 import Parser
 
-public enum ParserOutcomeStatus: String, Sendable {
-    case accepted
-    case recovered
-    case rejected
-}
+/// LR specialization of the parser-independent deterministic result.
+public typealias LRParseResult = DeterministicParseResult<LRParserTraceEvent>
 
-public struct ParserDiagnostic: CustomStringConvertible {
-    public enum Severity: String, Sendable { case warning, error }
-    public let severity: Severity
-    public let message: String
-    public let state: Int?
-    public let expected: Set<Terminal>
-
-    public init(severity: Severity, message: String, state: Int? = nil, expected: Set<Terminal> = []) {
-        self.severity = severity
-        self.message = message
-        self.state = state
-        self.expected = expected
-    }
-
-    public var description: String { "\(severity.rawValue): \(message)" }
-}
-
-public enum RecoveryEdit: CustomStringConvertible {
-    case insert(terminal: Terminal, atToken: Int)
-    case delete(terminal: Terminal, atToken: Int)
-    case skip(terminals: [Terminal], fromToken: Int)
-
-    public var description: String {
-        switch self {
-        case .insert(let terminal, let index): return "insert \(terminal) at token \(index)"
-        case .delete(let terminal, let index): return "delete \(terminal) at token \(index)"
-        case .skip(let terminals, let index): return "skip \(terminals.map(\.description).joined(separator: " ")) from token \(index)"
-        }
-    }
-}
-
-public struct ParserOutcome {
-    public let status: ParserOutcomeStatus
-    public let tree: ParseTree?
-    public let diagnostics: [ParserDiagnostic]
-    public let recoveryEdits: [RecoveryEdit]
-    public let trace: [LRParserTraceEvent]
-
-    public init(status: ParserOutcomeStatus, tree: ParseTree?, diagnostics: [ParserDiagnostic], recoveryEdits: [RecoveryEdit], trace: [LRParserTraceEvent] = []) {
-        self.status = status
-        self.tree = tree
-        self.diagnostics = diagnostics
-        self.recoveryEdits = recoveryEdits
-        self.trace = trace
-    }
-}
+/// Compatibility name retained for clients of the original LR API.
+public typealias ParserOutcome = LRParseResult
+public typealias ParserOutcomeStatus = ParseStatus
+public typealias ParserDiagnostic = ParseDiagnostic
 
 public enum RecoveryPolicy: Sendable {
     case none

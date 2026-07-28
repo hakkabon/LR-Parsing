@@ -650,36 +650,36 @@ struct ErrorHandlingTests {
 @Suite("SyntaxError Line/Column")
 struct SyntaxErrorTests {
 
-    @Test("SyntaxError reports line 0 for error on first line")
+    @Test("SyntaxError reports line 1 for error on first line")
     func lineNumberFirstLine() {
         let source = "hello world"
         let range = source.startIndex ..< source.index(source.startIndex, offsetBy: 5)
-        let err = SyntaxError(range: range, in: source, reason: .unexpectedToken)
-        #expect(err.line == 0)
+        let err = SyntaxError(reason: .unexpectedToken, message: "Unexpected token", range: range, source: source)
+        #expect(err.line == 1)
     }
 
-    @Test("SyntaxError reports line 1 for error on second line")
+    @Test("SyntaxError reports line 2 for error on second line")
     func lineNumberSecondLine() {
         let source = "line1\nline2"
         let idx = source.index(source.startIndex, offsetBy: 6)
         let range = idx ..< source.index(idx, offsetBy: 5)
-        let err = SyntaxError(range: range, in: source, reason: .unexpectedToken)
-        #expect(err.line == 1)
+        let err = SyntaxError(reason: .unexpectedToken, message: "Unexpected token", range: range, source: source)
+        #expect(err.line == 2)
     }
 
-    @Test("SyntaxError column is 0 at start of string")
+    @Test("SyntaxError column is 1 at start of string")
     func columnAtStartOfString() {
         let source = "abc"
         let range = source.startIndex ..< source.index(source.startIndex, offsetBy: 1)
-        let err = SyntaxError(range: range, in: source, reason: .unknownToken)
-        #expect(err.column == 0)
+        let err = SyntaxError(reason: .unknownToken, message: "Unknown token", range: range, source: source)
+        #expect(err.column == 1)
     }
 
     @Test("SyntaxError description contains reason keyword")
     func descriptionContainsReason() {
         let source = "xyz"
         let range = source.startIndex ..< source.index(source.startIndex, offsetBy: 1)
-        let err = SyntaxError(range: range, in: source, reason: .unexpectedToken)
+        let err = SyntaxError(reason: .unexpectedToken, message: "Unexpected token", range: range, source: source)
         #expect(err.description.contains("Unexpected"))
     }
 
@@ -688,18 +688,18 @@ struct SyntaxErrorTests {
         let source = "abc"
         let range = source.startIndex ..< source.index(source.startIndex, offsetBy: 1)
         let ctx: [NonTerminal] = [NonTerminal(name: "expr"), NonTerminal(name: "term")]
-        let err = SyntaxError(range: range, in: source, reason: .unexpectedToken, context: ctx)
+        let err = SyntaxError(reason: .unexpectedToken, message: "Unexpected token", range: range, context: ctx, source: source)
         #expect(err.description.contains("expr"))
         #expect(err.description.contains("term"))
     }
 
-    @Test("SyntaxError on empty string returns line 0 and column 0")
-    func emptyStringReturnsZeroZero() {
+    @Test("SyntaxError on empty string returns line 1 and column 1")
+    func emptyStringReturnsOneOne() {
         let source = ""
         let range = source.startIndex ..< source.startIndex
-        let err = SyntaxError(range: range, in: source, reason: .emptyNotAllowed)
-        #expect(err.line == 0)
-        #expect(err.column == 0)
+        let err = SyntaxError(reason: .emptyNotAllowed, message: "Empty string not accepted", range: range, source: source)
+        #expect(err.line == 1)
+        #expect(err.column == 1)
     }
 
     @Test("SyntaxError reason descriptions are non-empty")

@@ -49,8 +49,9 @@ LR parsers are **shift-reduce** parsers that read input left-to-right and produc
 - **Published generation artifacts** — states, items, transitions, ACTION/GOTO
   tables, conflicts, and shortest terminal witnesses are available through
   `LRParser.generate()`
-- **Structured parser outcomes** — diagnostics and recovery edits distinguish
-  clean acceptance, recovered acceptance, and rejection
+- **Shared structured parse results** — `Parser.ParseDiagnostic`,
+  `ParseStatus`, and `RecoveryEdit` distinguish clean acceptance, recovered
+  acceptance, and rejection; LR adds its own trace event type
 - **Stable artifact identity** — productions, items, states, transitions, and
   conflicts carry deterministic semantic IDs; canonical generation ordering
   also keeps numeric state indices stable across repeated generation
@@ -125,6 +126,7 @@ let outcome = try parser.parseOutcome(
 print(outcome.status)
 print(outcome.diagnostics)
 print(outcome.recoveryEdits)
+DiagnosticReporter().report(diagnostics: outcome.diagnostics)
 ```
 
 Enable structured runtime tracing when a replayable execution record is needed:
@@ -444,7 +446,7 @@ See the detailed improvement notes in the repository's [IMPROVEMENTS.md](IMPROVE
 - LR(0) reduce-on-all-terminals strategy causes unnecessary conflicts for most grammars
 - Conflict handling in `addShift` silently favors shift without propagating an error
 - ~~The `extractTerminal` method is defined but never called in the parse loop~~ — resolved: both `extractTerminal` and the inline `getTerminal` closure it duplicated were removed when the parser adopted `TokenStream`; token-to-`Terminal` mapping now happens once, in `Lexer`'s `TokenizerStream`/`LexerTokenStream`, not in this package
-- `SyntaxError` (with line/column information) is never thrown by `LRParser`; it throws `LRParseError` instead
+- Strict parsing throws `LRParseError`; recoverable parsing returns the shared `ParseDiagnostic` model with one-based source locations and optional LR state information
 - The LALR GOTO fixup comment notes a potential correctness issue when the merged state set doesn't exactly match generated goto sets
 - `Unique.< ` comparator compares `id` to itself rather than `lhs.id` to `rhs.id`
 
