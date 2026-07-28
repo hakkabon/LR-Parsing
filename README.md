@@ -56,6 +56,9 @@ LR parsers are **shift-reduce** parsers that read input left-to-right and produc
   also keeps numeric state indices stable across repeated generation
 - **Opt-in parser tracing** — structured start, lookahead inspection, shift,
   reduce, error, recovery, and accept events retain stable artifact references
+- **Structured ACTION origins** — every pre-resolution ACTION candidate retains
+  its originating LR item and whether it came from a terminal transition,
+  LR(0) reduction, SLR FOLLOW set, LR(1)/LALR item lookahead, or augmented start
 - **Recovery policies** — panic-mode synchronization and bounded single-token
   local repair are available through `parseOutcome`
 - **`lr-gtool` CLI** — a standalone command-line executable for quick grammar experimentation
@@ -140,6 +143,23 @@ productions intentionally share one semantic production identity.
 Generation never discards a conflicted automaton. The artifact retains all
 conflicts for inspection; strict `syntaxTree(for:)` refuses to run a conflicted
 table.
+
+Every selected ACTION cell is backed by `LRAutomaton.actionCandidates`. A
+conflict exposes the relevant subset directly through `LRConflict.candidates`,
+so clients can explain competing actions without reconstructing their origins:
+
+```swift
+for candidate in conflict.candidates {
+    print(candidate.action)
+    print(candidate.reason)
+    print(candidate.item)
+    print(candidate.identity)
+}
+```
+
+Candidates are retained before action deduplication. This means several LR items
+may independently justify the same shift or reduction without being mislabeled
+as a conflict.
 
 ### 4. Parsing a `TokenStream` directly
 

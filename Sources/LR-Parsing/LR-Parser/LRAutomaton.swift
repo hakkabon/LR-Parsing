@@ -44,16 +44,18 @@ public struct LRConflict: Hashable, CustomStringConvertible {
     public let state: Int
     public let lookahead: Terminal
     public let actions: [LRAction]
+    public let candidates: [LRActionCandidate]
     /// A shortest terminal sequence reaching the conflict state, followed by
     /// the conflicting lookahead (except when it is EOF).
     public let witness: [Terminal]
 
-    public init(kind: Kind, state: Int, lookahead: Terminal, actions: [LRAction], witness: [Terminal] = [], identity: LRArtifactID? = nil) {
+    public init(kind: Kind, state: Int, lookahead: Terminal, actions: [LRAction], witness: [Terminal] = [], identity: LRArtifactID? = nil, candidates: [LRActionCandidate] = []) {
         self.kind = kind
         self.state = state
         self.lookahead = lookahead
         self.actions = actions
         self.witness = witness
+        self.candidates = candidates
         self.identity = identity ?? LRArtifactID(rawValue: "conflict:\(state):\(lookahead.description):\(actions.map(\.lrStableKey).sorted().joined(separator: "|"))")
     }
 
@@ -69,14 +71,17 @@ public struct LRAutomaton {
     public let states: [LRState]
     public let transitions: [LRTransition]
     public let actionTable: LRActionTable
+    /// All candidates and origins considered before choosing each ACTION cell.
+    public let actionCandidates: LRActionCandidateTable
     public let gotoTable: LRGotoTable
     public let conflicts: [LRConflict]
 
-    public init(states: [LRState], transitions: [LRTransition], actionTable: LRActionTable, gotoTable: LRGotoTable, conflicts: [LRConflict], productions: [LRProductionArtifact]? = nil) {
+    public init(states: [LRState], transitions: [LRTransition], actionTable: LRActionTable, gotoTable: LRGotoTable, conflicts: [LRConflict], productions: [LRProductionArtifact]? = nil, actionCandidates: LRActionCandidateTable = [:]) {
         self.productions = productions ?? Dictionary(grouping: states.flatMap(\.items).map { LRProductionArtifact(production: $0.production) }, by: \.identity).values.compactMap(\.first).sorted { $0.identity < $1.identity }
         self.states = states
         self.transitions = transitions
         self.actionTable = actionTable
+        self.actionCandidates = actionCandidates
         self.gotoTable = gotoTable
         self.conflicts = conflicts
     }
