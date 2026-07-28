@@ -113,6 +113,9 @@ let artifact = parser.generate()
 print(artifact.states[0])
 for conflict in artifact.conflicts {
     print(conflict, conflict.witness)
+    print(conflict.decision as Any)
+    let replay = artifact.replay(conflict)
+    print(replay.reachedConflict, replay.steps)
 }
 
 let outcome = try parser.parseOutcome(
@@ -160,6 +163,17 @@ for candidate in conflict.candidates {
 Candidates are retained before action deduplication. This means several LR items
 may independently justify the same shift or reduction without being mislabeled
 as a conflict.
+
+`LRAutomaton.actionDecisions` records the deterministic choice for every ACTION
+cell, including its candidates, selected action and resolution policy. The
+current generator records sole-action, accept-preference, shift-preference and
+deterministic generation-order decisions. A conflict also references its cell's
+decision directly.
+
+`LRAutomaton.replay(_:)` executes the conflict's shortest terminal witness using
+those decisions and stops before the conflicted cell is applied. Its structured
+result contains stack/state steps, the decision reached, and a failure reason if
+the witness cannot reach the advertised state.
 
 ### 4. Parsing a `TokenStream` directly
 
