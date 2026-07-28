@@ -239,6 +239,13 @@ struct ParserOutcomeTests {
         #expect(outcome.status == .recovered)
         #expect(outcome.recoveryEdits.count == 1)
         #expect(!outcome.diagnostics.isEmpty)
+        let diagnostic = try #require(outcome.diagnostics.first)
+        #expect(diagnostic.reason == .unexpectedToken)
+        #expect(diagnostic.line == 1)
+        #expect(diagnostic.column == 1)
+        #expect(diagnostic.parserState != nil)
+        #expect(diagnostic.found?.description == "\"x\"")
+        #expect(!DiagnosticReporter().string(for: outcome.diagnostics).isEmpty)
     }
 
     @Test("panic recovery skips to a viable token")

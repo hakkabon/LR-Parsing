@@ -43,7 +43,7 @@ extension GrammarTool {
                 try Grammar(bnf: try String(contentsOf: options.grammar), start: options.start)
             }
             
-            let parser: Parser = switch method {
+            let parser: DeterministicParser = switch method {
             case .lr0: LRParser(grammar: grammar, algorithm: .lr0)
             case .slr: LRParser(grammar: grammar, algorithm: .slr)
             case .lalr: LRParser(grammar: grammar, algorithm: .lalr)
@@ -61,7 +61,7 @@ extension GrammarTool {
             }
         }
         
-        private func runAnalysis(_ analysis: Analysis, parser: Parser, input: String, grammar: Grammar) throws {
+        private func runAnalysis(_ analysis: Analysis, parser: DeterministicParser, input: String, grammar: Grammar) throws {
             
             switch analysis {
                 
