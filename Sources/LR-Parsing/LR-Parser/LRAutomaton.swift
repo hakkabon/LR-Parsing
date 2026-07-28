@@ -39,7 +39,7 @@ public struct LRTransition: Hashable {
     }
 }
 
-public struct LRConflict: Hashable, Comparable, CustomStringConvertible {
+public struct LRConflict: Hashable, CustomStringConvertible {
     public enum Kind: String, Hashable {
         case shiftReduce = "shift/reduce"
         case reduceReduce = "reduce/reduce"
@@ -72,18 +72,14 @@ public struct LRConflict: Hashable, Comparable, CustomStringConvertible {
     public var description: String {
         "\(kind.rawValue) in state \(state) on \(lookahead): \(actions.map(\.description).joined(separator: " / "))"
     }
-
-    public static func < (lhs: LRConflict, rhs: LRConflict) -> Bool {
-        if lhs.state != rhs.state { return lhs.state < rhs.state }
-        if lhs.lookahead.lrStableKey != rhs.lookahead.lrStableKey { return lhs.lookahead.lrStableKey < rhs.lookahead.lrStableKey }
-        return lhs.identity < rhs.identity
-    }
 }
 
 extension LRConflict: Comparable {
     
     public static func < (lhs: LRConflict, rhs: LRConflict) -> Bool {
-        return lhs.state == rhs.state ? lhs.lookahead.lrStableKey < rhs.lookahead.lrStableKey : lhs.state < rhs.state
+        if lhs.state != rhs.state { return lhs.state < rhs.state }
+        if lhs.lookahead.lrStableKey != rhs.lookahead.lrStableKey { return lhs.lookahead.lrStableKey < rhs.lookahead.lrStableKey }
+        return lhs.identity < rhs.identity
     }
 }
 
