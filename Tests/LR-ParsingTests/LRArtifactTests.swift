@@ -129,7 +129,9 @@ struct LRArtifactTests {
         let parser = LRParser(grammar: grammar, algorithm: .lalr, precedence: precedence)
         let artifact = parser.generate()
 
-        #expect(artifact.conflicts.count == 4)
+        #expect(artifact.conflicts.isEmpty)
+        #expect(artifact.allConflicts.count == 4)
+        #expect(artifact.resolvedDecisions.count == 4)
         #expect(artifact.unresolvedConflicts.isEmpty)
         #expect(artifact.resolvedConflicts.allSatisfy { $0.status == .resolved })
         #expect(parser.recognizes("id + id * id"))
@@ -202,6 +204,19 @@ struct LRArtifactTests {
         #expect(replay.steps.last?.kind == .conflict)
         #expect(replay.steps.last?.state.index == conflict.state)
         #expect(replay.steps.last?.lookahead == conflict.lookahead)
+    }
+
+    @Test("replay forces every competing branch from the same conflict point")
+    func conflictBranchReplay() throws {
+        let grammar = try Grammar(bnf: "<E> ::= <E> \"+\" <E> | \"id\"", start: "E")
+        let artifact = LRParser(grammar: grammar, algorithm: .lalr).generate()
+        let conflict = try #require(artifact.conflicts.first)
+        let branches = artifact.replayBranches(conflict)
+
+        #expect(branches.count == conflict.actions.count)
+        #expect(Set(branches.map(\.action)) == Set(conflict.actions))
+        #expect(branches.filter(\.wasSelected).count == 1)
+        #expect(branches.allSatisfy { $0.steps.last?.kind != .conflict })
     }
 }
 

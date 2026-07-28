@@ -87,11 +87,15 @@ public struct LRAutomaton {
     /// The explicit deterministic selection made for every ACTION cell.
     public let actionDecisions: LRActionDecisionTable
     public let gotoTable: LRGotoTable
+    /// Conflicts that still block deterministic parsing.
     public let conflicts: [LRConflict]
-    public var resolvedConflicts: [LRConflict] { conflicts.filter(\.isResolved) }
-    public var unresolvedConflicts: [LRConflict] { conflicts.filter { !$0.isResolved } }
+    /// Conflict-shaped cells that were deliberately resolved into decisions.
+    public let resolvedConflicts: [LRConflict]
+    public var unresolvedConflicts: [LRConflict] { conflicts }
+    public var resolvedDecisions: [LRActionDecision] { resolvedConflicts.compactMap(\.decision) }
+    public var allConflicts: [LRConflict] { (conflicts + resolvedConflicts).sorted() }
 
-    public init(states: [LRState], transitions: [LRTransition], actionTable: LRActionTable, gotoTable: LRGotoTable, conflicts: [LRConflict], productions: [LRProductionArtifact]? = nil, actionCandidates: LRActionCandidateTable = [:], actionDecisions: LRActionDecisionTable = [:]) {
+    public init(states: [LRState], transitions: [LRTransition], actionTable: LRActionTable, gotoTable: LRGotoTable, conflicts: [LRConflict], resolvedConflicts: [LRConflict] = [], productions: [LRProductionArtifact]? = nil, actionCandidates: LRActionCandidateTable = [:], actionDecisions: LRActionDecisionTable = [:]) {
         self.productions = productions ?? Dictionary(grouping: states.flatMap(\.items).map { LRProductionArtifact(production: $0.production) }, by: \.identity).values.compactMap(\.first).sorted { $0.identity < $1.identity }
         self.states = states
         self.transitions = transitions
@@ -99,11 +103,13 @@ public struct LRAutomaton {
         self.actionCandidates = actionCandidates
         self.actionDecisions = actionDecisions
         self.gotoTable = gotoTable
-        self.conflicts = conflicts
+        let classified = conflicts + resolvedConflicts
+        self.conflicts = classified.filter { !$0.isResolved }.sorted()
+        self.resolvedConflicts = classified.filter(\.isResolved).sorted()
     }
 
     public func state(_ id: Int) -> LRState? { states.first { $0.id == id } }
     public func state(identity: LRArtifactID) -> LRState? { states.first { $0.identity == identity } }
-    public func conflict(identity: LRArtifactID) -> LRConflict? { conflicts.first { $0.identity == identity } }
+    public func conflict(identity: LRArtifactID) -> LRConflict? { allConflicts.first { $0.identity == identity } }
     public func production(identity: LRArtifactID) -> LRProductionArtifact? { productions.first { $0.identity == identity } }
 }
