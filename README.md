@@ -191,6 +191,25 @@ associativity, and an error ACTION cell for non-associativity. Strict parsing is
 allowed when `unresolvedConflicts` is empty; deterministic fallback decisions
 remain unresolved and continue to block it.
 
+Application-specific policies can resolve cells not covered by precedence:
+
+```swift
+let parser = LRParser(
+    grammar: grammar,
+    algorithm: .lalr,
+    precedence: precedence,
+    resolutionPolicy: LRStandardConflictPolicy.preferReduce
+)
+```
+
+Implement `LRConflictResolutionPolicy` for custom behavior. Policies receive an
+`LRConflictResolutionContext` containing the state, lookahead, distinct actions,
+and all originating candidates. Returning nil abstains. Returning an
+`LRPolicyResolution` either selects one of those actions or deliberately
+installs an error cell by selecting nil. Invalid foreign actions are ignored and
+the conflict remains unresolved. Decision artifacts retain the policy name and
+explanation. Declared precedence is applied before the general policy.
+
 `LRAutomaton.replay(_:)` executes the conflict's shortest terminal witness using
 those decisions and stops before the conflicted cell is applied. Its structured
 result contains stack/state steps, the decision reached, and a failure reason if

@@ -41,8 +41,8 @@ public class LRParser: Parser {
     let symbols = ["|", "\\", "^", ":", ",", "$", ".", "\"", "¶", ">", "#", "+", "-", "{","[", "<", "(",
                    "'", "}", "]", ":]", ")", ";", "/", "*", "?", "??", ":=", "="]
 
-    public init(grammar: Grammar, algorithm: Algorithm, precedence: LRPrecedenceSpecification? = nil) {
-        self.generator = LRTableGenerator(grammar: grammar, algorithm: algorithm, precedence: precedence)
+    public init(grammar: Grammar, algorithm: Algorithm, precedence: LRPrecedenceSpecification? = nil, resolutionPolicy: (any LRConflictResolutionPolicy)? = nil) {
+        self.generator = LRTableGenerator(grammar: grammar, algorithm: algorithm, precedence: precedence, resolutionPolicy: resolutionPolicy)
     }
 
     /// Generates an inspectable automaton even when the grammar has conflicts.

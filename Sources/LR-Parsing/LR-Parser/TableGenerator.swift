@@ -13,14 +13,16 @@ public final class LRTableGenerator {
     let grammar: Grammar
     let algorithm: LRParser.Algorithm
     let precedence: LRPrecedenceSpecification?
+    let resolutionPolicy: (any LRConflictResolutionPolicy)?
     let augmentedStart = NonTerminal(name: "S'")
     var firstSets: [Symbol: Set<Symbol>]
     var followSets: [NonTerminal: Set<Symbol>]
     
-    public init(grammar: Grammar, algorithm: LRParser.Algorithm, precedence: LRPrecedenceSpecification? = nil) {
+    public init(grammar: Grammar, algorithm: LRParser.Algorithm, precedence: LRPrecedenceSpecification? = nil, resolutionPolicy: (any LRConflictResolutionPolicy)? = nil) {
         self.grammar = grammar
         self.algorithm = algorithm
         self.precedence = precedence
+        self.resolutionPolicy = resolutionPolicy
         // Pre-calculate sets
         (self.firstSets, self.followSets) = grammar.firstAndFollow()
     }
@@ -129,7 +131,7 @@ public final class LRTableGenerator {
                 normalizedCandidates[state, default: [:]][terminal] = origins
                 let actions = origins.map(\.action)
                 let unique = actions.reduce(into: [LRAction]()) { if !$0.contains($1) { $0.append($1) } }
-                let selection = preferredAction(in: unique, on: terminal)
+                let selection = preferredAction(in: unique, candidates: origins, state: state, on: terminal)
                 let decision = LRActionDecision(state: state, lookahead: terminal, candidates: origins, selectedAction: selection.action, resolution: selection.resolution, status: selection.status)
                 decisions[state, default: [:]][terminal] = decision
                 if let selected = decision.selectedAction { table.action[state, default: [:]][terminal] = selected }
@@ -385,9 +387,10 @@ public final class LRTableGenerator {
         }
     }
 
-    private func preferredAction(in actions: [LRAction], on lookahead: Terminal) -> (action: LRAction?, resolution: LRActionResolution, status: LRActionDecisionStatus) {
+    private func preferredAction(in actions: [LRAction], candidates: [LRActionCandidate], state: Int, on lookahead: Terminal) -> (action: LRAction?, resolution: LRActionResolution, status: LRActionDecisionStatus) {
         if actions.count == 1 { return (actions[0], .soleAction, .resolved) }
         if let precedenceSelection = precedenceSelection(in: actions, on: lookahead) { return precedenceSelection }
+        if let policySelection = policySelection(in: actions, candidates: candidates, state: state, on: lookahead) { return policySelection }
         if let accept = actions.first(where: { if case .accept = $0 { return true }; return false }) {
             return (accept, .preferAcceptFallback, .unresolved)
         }
@@ -395,6 +398,14 @@ public final class LRTableGenerator {
             return (shift, .preferShiftFallback, .unresolved)
         }
         return (actions[0], .generationOrderFallback, .unresolved)
+    }
+
+    private func policySelection(in actions: [LRAction], candidates: [LRActionCandidate], state: Int, on lookahead: Terminal) -> (action: LRAction?, resolution: LRActionResolution, status: LRActionDecisionStatus)? {
+        guard let resolutionPolicy else { return nil }
+        let context = LRConflictResolutionContext(state: state, lookahead: lookahead, candidates: candidates, actions: actions)
+        guard let proposal = resolutionPolicy.resolve(context) else { return nil }
+        if let selected = proposal.selectedAction, !actions.contains(selected) { return nil }
+        return (proposal.selectedAction, .policy(name: resolutionPolicy.name, explanation: proposal.explanation), .resolved)
     }
 
     private func precedenceSelection(in actions: [LRAction], on lookahead: Terminal) -> (action: LRAction?, resolution: LRActionResolution, status: LRActionDecisionStatus)? {

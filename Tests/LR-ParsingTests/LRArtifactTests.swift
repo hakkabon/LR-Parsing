@@ -2,6 +2,13 @@ import Testing
 import Grammar
 @testable import LR_Parsing
 
+private struct TestConflictPolicy: LRConflictResolutionPolicy {
+    let name = "test-last-action"
+    func resolve(_ context: LRConflictResolutionContext) -> LRPolicyResolution? {
+        context.actions.last.map { LRPolicyResolution(selectedAction: $0, explanation: "selected the last deterministic action") }
+    }
+}
+
 @Suite("LR generation artifacts")
 struct LRArtifactTests {
     @Test("artifact exposes states, transitions, ACTION, and GOTO")
@@ -126,6 +133,60 @@ struct LRArtifactTests {
         #expect(artifact.unresolvedConflicts.isEmpty)
         #expect(artifact.resolvedConflicts.allSatisfy { $0.status == .resolved })
         #expect(parser.recognizes("id + id * id"))
+    }
+
+    @Test("explicit reduce policy resolves an otherwise unresolved conflict")
+    func explicitReducePolicy() throws {
+        let grammar = try Grammar(bnf: "<E> ::= <E> \"+\" <E> | \"id\"", start: "E")
+        let parser = LRParser(grammar: grammar, algorithm: .lalr, resolutionPolicy: LRStandardConflictPolicy.preferReduce)
+        let artifact = parser.generate()
+        let conflict = try #require(artifact.resolvedConflicts.first)
+
+        #expect(artifact.unresolvedConflicts.isEmpty)
+        #expect(conflict.decision?.status == .resolved)
+        if case .policy(let name, _) = conflict.decision?.resolution { #expect(name == "preferReduce") }
+        else { Issue.record("Expected policy resolution provenance") }
+        if case .reduce = conflict.decision?.selectedAction {} else { Issue.record("Expected policy to select reduce") }
+        #expect(parser.recognizes("id + id + id"))
+    }
+
+    @Test("explicit reject policy installs an error cell")
+    func explicitRejectPolicy() throws {
+        let grammar = try Grammar(bnf: "<E> ::= <E> \"+\" <E> | \"id\"", start: "E")
+        let parser = LRParser(grammar: grammar, algorithm: .lalr, resolutionPolicy: LRStandardConflictPolicy.reject)
+        let artifact = parser.generate()
+        let conflict = try #require(artifact.resolvedConflicts.first)
+
+        #expect(conflict.decision?.selectedAction == nil)
+        #expect(artifact.actionTable[conflict.state]?[conflict.lookahead] == nil)
+        #expect(!parser.recognizes("id + id + id"))
+    }
+
+    @Test("declared precedence is authoritative before a general policy")
+    func precedenceBeforePolicy() throws {
+        let plus = Terminal(string: "+")
+        let grammar = try Grammar(bnf: "<E> ::= <E> \"+\" <E> | \"id\"", start: "E")
+        let precedence = LRPrecedenceSpecification(levels: [
+            LRPrecedenceLevel(1, associativity: .left, terminals: [plus])
+        ])
+        let artifact = LRParser(grammar: grammar, algorithm: .lalr, precedence: precedence, resolutionPolicy: LRStandardConflictPolicy.preferShift).generate()
+        let conflict = try #require(artifact.resolvedConflicts.first)
+
+        #expect(conflict.decision?.resolution == .leftAssociative(level: 1))
+        if case .reduce = conflict.decision?.selectedAction {} else { Issue.record("Expected precedence to select reduce") }
+    }
+
+    @Test("client-defined policy receives structured conflict context")
+    func customPolicy() throws {
+        let grammar = try Grammar(bnf: "<E> ::= <E> \"+\" <E> | \"id\"", start: "E")
+        let artifact = LRParser(grammar: grammar, algorithm: .lalr, resolutionPolicy: TestConflictPolicy()).generate()
+        let conflict = try #require(artifact.resolvedConflicts.first)
+
+        #expect(conflict.decision?.selectedAction == conflict.actions.last)
+        if case .policy(let name, let explanation) = conflict.decision?.resolution {
+            #expect(name == "test-last-action")
+            #expect(explanation.contains("last deterministic action"))
+        } else { Issue.record("Expected custom policy provenance") }
     }
 
     @Test("shortest conflict witness replays to its decision point")

@@ -12,6 +12,7 @@ public enum LRActionResolution: Hashable, CustomStringConvertible {
     case leftAssociative(level: Int)
     case rightAssociative(level: Int)
     case nonAssociative(level: Int)
+    case policy(name: String, explanation: String)
 
     public var description: String {
         switch self {
@@ -23,6 +24,7 @@ public enum LRActionResolution: Hashable, CustomStringConvertible {
         case .leftAssociative(let level): "precedence level \(level) is left associative, so reduce is selected"
         case .rightAssociative(let level): "precedence level \(level) is right associative, so shift is selected"
         case .nonAssociative(let level): "precedence level \(level) is non-associative, so the ACTION cell rejects input"
+        case .policy(let name, let explanation): "policy \(name): \(explanation)"
         }
     }
 
@@ -36,6 +38,7 @@ public enum LRActionResolution: Hashable, CustomStringConvertible {
         case .leftAssociative(let level): "left:\(level)"
         case .rightAssociative(let level): "right:\(level)"
         case .nonAssociative(let level): "nonassoc:\(level)"
+        case .policy(let name, let explanation): "policy:\(name):\(explanation)"
         }
     }
 }
