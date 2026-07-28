@@ -118,6 +118,7 @@ public final class LRTableGenerator {
         
         var rawConflicts: [(Int, Terminal, [LRAction], [LRActionCandidate])] = []
         var normalizedCandidates: LRActionCandidateTable = [:]
+        var decisions: LRActionDecisionTable = [:]
         for state in candidates.keys.sorted() {
             for terminal in candidates[state, default: [:]].keys.sorted(by: { $0.lrStableKey < $1.lrStableKey }) {
                 let origins = (candidates[state]?[terminal] ?? []).reduce(into: [LRActionCandidate]()) { result, candidate in
@@ -126,7 +127,10 @@ public final class LRTableGenerator {
                 normalizedCandidates[state, default: [:]][terminal] = origins
                 let actions = origins.map(\.action)
                 let unique = actions.reduce(into: [LRAction]()) { if !$0.contains($1) { $0.append($1) } }
-                table.action[state, default: [:]][terminal] = preferredAction(in: unique)
+                let selection = preferredAction(in: unique)
+                let decision = LRActionDecision(state: state, lookahead: terminal, candidates: origins, selectedAction: selection.action, resolution: selection.resolution)
+                decisions[state, default: [:]][terminal] = decision
+                table.action[state, default: [:]][terminal] = decision.selectedAction
                 if unique.count > 1 { rawConflicts.append((state, terminal, unique, origins)) }
             }
         }
@@ -140,10 +144,16 @@ public final class LRTableGenerator {
             let stateKey = stateIdentities[state]?.rawValue ?? String(state)
             let actionKey = actions.map(\.lrStableKey).sorted().joined(separator: "|")
             let identity = LRArtifactID(rawValue: "conflict:\(stateKey):\(terminal.lrStableKey):\(actionKey)")
+<<<<<<< HEAD
             conflicts.append(LRConflict(kind: conflictKind(actions), state: state, lookahead: terminal, actions: actions, witness: witness, identity: identity, candidates: origins))
         }
         conflicts.sort()
 
+=======
+            conflicts.append(LRConflict(kind: conflictKind(actions), state: state, lookahead: terminal, actions: actions, witness: witness, identity: identity, candidates: origins, decision: decisions[state]?[terminal]))
+        }
+        conflicts.sort()
+>>>>>>> dev-branch
         return LRAutomaton(
             states: stateArtifacts,
             transitions: transitions.map { transition in
@@ -154,7 +164,8 @@ public final class LRTableGenerator {
             actionTable: table.action,
             gotoTable: table.gotoTable,
             conflicts: conflicts,
-            actionCandidates: normalizedCandidates
+            actionCandidates: normalizedCandidates,
+            actionDecisions: decisions
         )
     }
     
@@ -379,10 +390,15 @@ public final class LRTableGenerator {
         }
     }
 
-    private func preferredAction(in actions: [LRAction]) -> LRAction {
-        actions.first { if case .accept = $0 { return true }; return false }
-            ?? actions.first { if case .shift = $0 { return true }; return false }
-            ?? actions[0]
+    private func preferredAction(in actions: [LRAction]) -> (action: LRAction, resolution: LRActionResolution) {
+        if actions.count == 1 { return (actions[0], .soleAction) }
+        if let accept = actions.first(where: { if case .accept = $0 { return true }; return false }) {
+            return (accept, .preferAccept)
+        }
+        if let shift = actions.first(where: { if case .shift = $0 { return true }; return false }) {
+            return (shift, .preferShift)
+        }
+        return (actions[0], .generationOrder)
     }
 
     private func conflictKind(_ actions: [LRAction]) -> LRConflict.Kind {

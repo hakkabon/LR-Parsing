@@ -44,6 +44,37 @@ struct LRArtifactTests {
             if case .slrFollow = $0.reason { true } else { false }
         })
     }
+
+    @Test("every ACTION has an explicit deterministic decision")
+    func actionDecisions() throws {
+        let grammar = try Grammar(bnf: "<E> ::= <E> \"+\" <E> | \"id\"", start: "E")
+        let artifact = LRParser(grammar: grammar, algorithm: .lalr).generate()
+
+        for (state, row) in artifact.actionTable {
+            for (lookahead, action) in row {
+                let decision = try #require(artifact.actionDecisions[state]?[lookahead])
+                #expect(decision.selectedAction == action)
+                #expect(decision.candidates.contains { $0.action == action })
+            }
+        }
+        let conflict = try #require(artifact.conflicts.first { $0.kind == .shiftReduce })
+        #expect(conflict.decision?.resolution == .preferShift)
+    }
+
+    @Test("shortest conflict witness replays to its decision point")
+    func conflictReplay() throws {
+        let grammar = try Grammar(bnf: "<E> ::= <E> \"+\" <E> | \"id\"", start: "E")
+        let artifact = LRParser(grammar: grammar, algorithm: .lalr).generate()
+        let conflict = try #require(artifact.conflicts.first { $0.kind == .shiftReduce })
+        let replay = artifact.replay(conflict)
+
+        #expect(replay.reachedConflict)
+        #expect(replay.failure == nil)
+        #expect(replay.decision?.selectedAction == conflict.decision?.selectedAction)
+        #expect(replay.steps.last?.kind == .conflict)
+        #expect(replay.steps.last?.state.index == conflict.state)
+        #expect(replay.steps.last?.lookahead == conflict.lookahead)
+    }
 }
 
 @Suite("Structured parser outcomes")
