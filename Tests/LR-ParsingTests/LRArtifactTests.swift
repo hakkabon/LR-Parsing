@@ -22,6 +22,27 @@ struct LRArtifactTests {
         #expect(!artifact.conflicts.isEmpty)
         #expect(artifact.conflicts.allSatisfy { !$0.witness.isEmpty })
         #expect(artifact.conflicts.contains { $0.kind == .shiftReduce })
+        let conflict = try #require(artifact.conflicts.first { $0.kind == .shiftReduce })
+        #expect(conflict.candidates.count >= 2)
+        #expect(conflict.candidates.contains { if case .terminalTransition = $0.reason { true } else { false } })
+        #expect(conflict.candidates.contains { if case .itemLookahead = $0.reason { true } else { false } })
+        #expect(conflict.candidates.allSatisfy { !$0.item.identity.rawValue.isEmpty })
+    }
+
+    @Test("every selected ACTION has one or more structured origins")
+    func actionOriginsCoverTable() throws {
+        let grammar = try makeArithmeticGrammar()
+        let artifact = LRParser(grammar: grammar, algorithm: .slr).generate()
+        for (state, entries) in artifact.actionTable {
+            for terminal in entries.keys {
+                let origins = artifact.actionCandidates[state]?[terminal] ?? []
+                #expect(!origins.isEmpty)
+                #expect(origins.allSatisfy { $0.state == state && $0.lookahead == terminal })
+            }
+        }
+        #expect(artifact.actionCandidates.values.flatMap(\.values).flatMap { $0 }.contains {
+            if case .slrFollow = $0.reason { true } else { false }
+        })
     }
 }
 

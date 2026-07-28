@@ -56,7 +56,7 @@ public final class LRTableGenerator {
         
         var table = LRTable()
         var transitions: [LRTransition] = []
-        var candidates: [Int: [Terminal: [LRAction]]] = [:]
+        var candidates: LRActionCandidateTable = [:]
         
         // 2. Populate Table
         for (stateId, items) in states.enumerated() {
@@ -85,7 +85,9 @@ public final class LRTableGenerator {
                 transitions.append(LRTransition(source: stateId, symbol: symbol, target: nextStateId))
                 switch symbol {
                 case .terminal(let t):
-                    add(.shift(nextStateId), state: stateId, terminal: t, candidates: &candidates)
+                    for item in items.filter({ $0.nextSymbol == symbol }).sorted(by: { $0.identity < $1.identity }) {
+                        add(.shift(nextStateId), from: item, because: .terminalTransition(symbol), state: stateId, terminal: t, candidates: &candidates)
+                    }
                 case .nonTerminal(let nt):
                     if table.gotoTable[stateId] == nil { table.gotoTable[stateId] = [:] }
                     table.gotoTable[stateId]?[nt] = nextStateId
@@ -99,7 +101,7 @@ public final class LRTableGenerator {
                 if item.nextSymbol == nil {
                     if item.production.goal == augmentedStart {
                         // Accept: S' -> S •
-                        add(.accept, state: stateId, terminal: .meta(.eof), candidates: &candidates)
+                        add(.accept, from: item, because: .augmentedStart, state: stateId, terminal: .meta(.eof), candidates: &candidates)
                     } else {
                         // Determine which terminals trigger reduction
                         let reduceTerminals = getReduceTerminals(for: item, at: item.production.goal)
@@ -107,33 +109,50 @@ public final class LRTableGenerator {
                         for term in reduceTerminals.sorted(by: { $0.lrStableKey < $1.lrStableKey }) {
                             if case .meta(let m) = term, m == .eps { continue } // Never reduce on epsilon
                             
-                            add(.reduce(item.production), state: stateId, terminal: term, candidates: &candidates)
+                            add(.reduce(item.production), from: item, because: reductionReason(for: item), state: stateId, terminal: term, candidates: &candidates)
                         }
                     }
                 }
             }
         }
         
-        var rawConflicts: [(Int, Terminal, [LRAction])] = []
+        var rawConflicts: [(Int, Terminal, [LRAction], [LRActionCandidate])] = []
+        var normalizedCandidates: LRActionCandidateTable = [:]
         for state in candidates.keys.sorted() {
             for terminal in candidates[state, default: [:]].keys.sorted(by: { $0.lrStableKey < $1.lrStableKey }) {
-                let actions = candidates[state]?[terminal] ?? []
+                let origins = (candidates[state]?[terminal] ?? []).reduce(into: [LRActionCandidate]()) { result, candidate in
+                    if !result.contains(where: { $0.identity == candidate.identity }) { result.append(candidate) }
+                }.sorted { $0.identity < $1.identity }
+                normalizedCandidates[state, default: [:]][terminal] = origins
+                let actions = origins.map(\.action)
                 let unique = actions.reduce(into: [LRAction]()) { if !$0.contains($1) { $0.append($1) } }
                 table.action[state, default: [:]][terminal] = preferredAction(in: unique)
-                if unique.count > 1 { rawConflicts.append((state, terminal, unique)) }
+                if unique.count > 1 { rawConflicts.append((state, terminal, unique, origins)) }
             }
         }
         let prefixes = shortestPrefixes(transitions: transitions)
         let stateArtifacts = states.enumerated().map { LRState(id: $0.offset, items: $0.element) }
         let stateIdentities = Dictionary(uniqueKeysWithValues: stateArtifacts.map { ($0.id, $0.identity) })
-        let conflicts = rawConflicts.map { state, terminal, actions in
+        var conflicts: [LRConflict] = []
+        for (state, terminal, actions, origins) in rawConflicts {
             var witness = prefixes[state] ?? []
             if terminal != .meta(.eof) { witness.append(terminal) }
+<<<<<<< HEAD
             let stateIdentitiesStr: String = stateIdentities[state]?.rawValue ?? String(state)
             let actionStr: String = actions.map(\.lrStableKey).sorted().joined(separator: "|")
             let identity = LRArtifactID(rawValue: "conflict:\(stateIdentitiesStr):\(terminal.lrStableKey):\(actionStr)")
             return LRConflict(kind: conflictKind(actions), state: state, lookahead: terminal, actions: actions, witness: witness, identity: identity)
         }.sorted()
+=======
+            let stateKey = stateIdentities[state]?.rawValue ?? String(state)
+            let actionKey = actions.map(\.lrStableKey).sorted().joined(separator: "|")
+            let identity = LRArtifactID(rawValue: "conflict:\(stateKey):\(terminal.lrStableKey):\(actionKey)")
+            conflicts.append(LRConflict(kind: conflictKind(actions), state: state, lookahead: terminal, actions: actions, witness: witness, identity: identity, candidates: origins))
+        }
+        conflicts.sort { lhs, rhs in
+            lhs.state == rhs.state ? lhs.lookahead.lrStableKey < rhs.lookahead.lrStableKey : lhs.state < rhs.state
+        }
+>>>>>>> dev-branch
         return LRAutomaton(
             states: stateArtifacts,
             transitions: transitions.map { transition in
@@ -143,7 +162,8 @@ public final class LRTableGenerator {
             }.sorted { $0.identity < $1.identity },
             actionTable: table.action,
             gotoTable: table.gotoTable,
-            conflicts: conflicts
+            conflicts: conflicts,
+            actionCandidates: normalizedCandidates
         )
     }
     
@@ -354,8 +374,18 @@ public final class LRTableGenerator {
 
     // MARK: - Table Population Utilities
 
-    private func add(_ action: LRAction, state: Int, terminal: Terminal, candidates: inout [Int: [Terminal: [LRAction]]]) {
-        candidates[state, default: [:]][terminal, default: []].append(action)
+    private func add(_ action: LRAction, from item: LRItem, because reason: LRActionReason, state: Int, terminal: Terminal, candidates: inout LRActionCandidateTable) {
+        candidates[state, default: [:]][terminal, default: []].append(
+            LRActionCandidate(state: state, lookahead: terminal, action: action, item: item, reason: reason)
+        )
+    }
+
+    private func reductionReason(for item: LRItem) -> LRActionReason {
+        switch algorithm {
+        case .lr0: .lr0Reduction
+        case .slr: .slrFollow(item.production.goal)
+        case .lr1, .lalr: .itemLookahead
+        }
     }
 
     private func preferredAction(in actions: [LRAction]) -> LRAction {
