@@ -74,8 +74,14 @@ public struct LRConflict: Hashable, CustomStringConvertible {
     }
 }
 
+<<<<<<< HEAD
 extension LRConflict: Comparable {
     
+=======
+    public var status: LRActionDecisionStatus { decision?.status ?? .unresolved }
+    public var isResolved: Bool { status == .resolved }
+
+>>>>>>> dev-branch
     public static func < (lhs: LRConflict, rhs: LRConflict) -> Bool {
         if lhs.state != rhs.state { return lhs.state < rhs.state }
         if lhs.lookahead.lrStableKey != rhs.lookahead.lrStableKey { return lhs.lookahead.lrStableKey < rhs.lookahead.lrStableKey }
@@ -97,6 +103,8 @@ public struct LRAutomaton {
     public let actionDecisions: LRActionDecisionTable
     public let gotoTable: LRGotoTable
     public let conflicts: [LRConflict]
+    public var resolvedConflicts: [LRConflict] { conflicts.filter(\.isResolved) }
+    public var unresolvedConflicts: [LRConflict] { conflicts.filter { !$0.isResolved } }
 
     public init(states: [LRState], transitions: [LRTransition], actionTable: LRActionTable, gotoTable: LRGotoTable, conflicts: [LRConflict], productions: [LRProductionArtifact]? = nil, actionCandidates: LRActionCandidateTable = [:], actionDecisions: LRActionDecisionTable = [:]) {
         self.productions = productions ?? Dictionary(grouping: states.flatMap(\.items).map { LRProductionArtifact(production: $0.production) }, by: \.identity).values.compactMap(\.first).sorted { $0.identity < $1.identity }

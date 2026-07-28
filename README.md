@@ -166,9 +166,30 @@ as a conflict.
 
 `LRAutomaton.actionDecisions` records the deterministic choice for every ACTION
 cell, including its candidates, selected action and resolution policy. The
-current generator records sole-action, accept-preference, shift-preference and
-deterministic generation-order decisions. A conflict also references its cell's
-decision directly.
+generator distinguishes resolved decisions from unresolved deterministic
+fallbacks. A conflict also references its cell's decision directly.
+
+Declare precedence programmatically when constructing a parser. Larger level
+numbers bind more tightly; reductions inherit the rightmost declared terminal
+unless a production override supplies another terminal:
+
+```swift
+let plus = Terminal(string: "+")
+let star = Terminal(string: "*")
+let precedence = LRPrecedenceSpecification(levels: [
+    LRPrecedenceLevel(1, associativity: .left, terminals: [plus]),
+    LRPrecedenceLevel(2, associativity: .left, terminals: [star])
+])
+let parser = LRParser(grammar: grammar, algorithm: .lalr, precedence: precedence)
+let artifact = parser.generate()
+print(artifact.resolvedConflicts)
+print(artifact.unresolvedConflicts)
+```
+
+Equal precedence selects reduce for left associativity, shift for right
+associativity, and an error ACTION cell for non-associativity. Strict parsing is
+allowed when `unresolvedConflicts` is empty; deterministic fallback decisions
+remain unresolved and continue to block it.
 
 `LRAutomaton.replay(_:)` executes the conflict's shortest terminal witness using
 those decisions and stops before the conflicted cell is applied. Its structured

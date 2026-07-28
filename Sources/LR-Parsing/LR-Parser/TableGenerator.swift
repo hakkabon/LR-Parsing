@@ -12,13 +12,15 @@ import Grammar
 public final class LRTableGenerator {
     let grammar: Grammar
     let algorithm: LRParser.Algorithm
+    let precedence: LRPrecedenceSpecification?
     let augmentedStart = NonTerminal(name: "S'")
     var firstSets: [Symbol: Set<Symbol>]
     var followSets: [NonTerminal: Set<Symbol>]
     
-    public init(grammar: Grammar, algorithm: LRParser.Algorithm) {
+    public init(grammar: Grammar, algorithm: LRParser.Algorithm, precedence: LRPrecedenceSpecification? = nil) {
         self.grammar = grammar
         self.algorithm = algorithm
+        self.precedence = precedence
         // Pre-calculate sets
         (self.firstSets, self.followSets) = grammar.firstAndFollow()
     }
@@ -127,10 +129,10 @@ public final class LRTableGenerator {
                 normalizedCandidates[state, default: [:]][terminal] = origins
                 let actions = origins.map(\.action)
                 let unique = actions.reduce(into: [LRAction]()) { if !$0.contains($1) { $0.append($1) } }
-                let selection = preferredAction(in: unique)
-                let decision = LRActionDecision(state: state, lookahead: terminal, candidates: origins, selectedAction: selection.action, resolution: selection.resolution)
+                let selection = preferredAction(in: unique, on: terminal)
+                let decision = LRActionDecision(state: state, lookahead: terminal, candidates: origins, selectedAction: selection.action, resolution: selection.resolution, status: selection.status)
                 decisions[state, default: [:]][terminal] = decision
-                table.action[state, default: [:]][terminal] = decision.selectedAction
+                if let selected = decision.selectedAction { table.action[state, default: [:]][terminal] = selected }
                 if unique.count > 1 { rawConflicts.append((state, terminal, unique, origins)) }
             }
         }
@@ -384,15 +386,50 @@ public final class LRTableGenerator {
         }
     }
 
-    private func preferredAction(in actions: [LRAction]) -> (action: LRAction, resolution: LRActionResolution) {
-        if actions.count == 1 { return (actions[0], .soleAction) }
+    private func preferredAction(in actions: [LRAction], on lookahead: Terminal) -> (action: LRAction?, resolution: LRActionResolution, status: LRActionDecisionStatus) {
+        if actions.count == 1 { return (actions[0], .soleAction, .resolved) }
+        if let precedenceSelection = precedenceSelection(in: actions, on: lookahead) { return precedenceSelection }
         if let accept = actions.first(where: { if case .accept = $0 { return true }; return false }) {
-            return (accept, .preferAccept)
+            return (accept, .preferAcceptFallback, .unresolved)
         }
         if let shift = actions.first(where: { if case .shift = $0 { return true }; return false }) {
-            return (shift, .preferShift)
+            return (shift, .preferShiftFallback, .unresolved)
         }
-        return (actions[0], .generationOrder)
+        return (actions[0], .generationOrderFallback, .unresolved)
+    }
+
+    private func precedenceSelection(in actions: [LRAction], on lookahead: Terminal) -> (action: LRAction?, resolution: LRActionResolution, status: LRActionDecisionStatus)? {
+        guard let precedence else { return nil }
+        let shifts = actions.filter { if case .shift = $0 { return true }; return false }
+        let reductions = actions.compactMap { action -> (LRAction, Production)? in
+            if case .reduce(let production) = action { return (action, production) }
+            return nil
+        }
+
+        if shifts.count == 1, reductions.count == 1, actions.count == 2,
+           let shiftPrecedence = precedence.precedence(of: lookahead),
+           let reducePrecedence = precedence.precedence(of: reductions[0].1) {
+            if shiftPrecedence.level > reducePrecedence.level {
+                return (shifts[0], .higherPrecedence(selected: shiftPrecedence.level, rejected: reducePrecedence.level), .resolved)
+            }
+            if reducePrecedence.level > shiftPrecedence.level {
+                return (reductions[0].0, .higherPrecedence(selected: reducePrecedence.level, rejected: shiftPrecedence.level), .resolved)
+            }
+            switch shiftPrecedence.associativity {
+            case .left: return (reductions[0].0, .leftAssociative(level: shiftPrecedence.level), .resolved)
+            case .right: return (shifts[0], .rightAssociative(level: shiftPrecedence.level), .resolved)
+            case .nonAssociative: return (nil, .nonAssociative(level: shiftPrecedence.level), .resolved)
+            }
+        }
+
+        if reductions.count == actions.count {
+            let ranked = reductions.compactMap { action, production in precedence.precedence(of: production).map { (action, $0) } }
+                .sorted { $0.1.level > $1.1.level }
+            if ranked.count == reductions.count, ranked.count > 1, ranked[0].1.level > ranked[1].1.level {
+                return (ranked[0].0, .higherPrecedence(selected: ranked[0].1.level, rejected: ranked[1].1.level), .resolved)
+            }
+        }
+        return nil
     }
 
     private func conflictKind(_ actions: [LRAction]) -> LRConflict.Kind {
