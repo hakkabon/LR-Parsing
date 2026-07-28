@@ -57,6 +57,8 @@ public struct LRConflict: Hashable, CustomStringConvertible {
     /// A shortest terminal sequence reaching the conflict state, followed by
     /// the conflicting lookahead (except when it is EOF).
     public let witness: [Terminal]
+    public var status: LRActionDecisionStatus { decision?.status ?? .unresolved }
+    public var isResolved: Bool { status == .resolved }
 
     public init(kind: Kind, state: Int, lookahead: Terminal, actions: [LRAction], witness: [Terminal] = [], identity: LRArtifactID? = nil, candidates: [LRActionCandidate] = [], decision: LRActionDecision? = nil) {
         self.kind = kind
@@ -74,14 +76,7 @@ public struct LRConflict: Hashable, CustomStringConvertible {
     }
 }
 
-<<<<<<< HEAD
 extension LRConflict: Comparable {
-    
-=======
-    public var status: LRActionDecisionStatus { decision?.status ?? .unresolved }
-    public var isResolved: Bool { status == .resolved }
-
->>>>>>> dev-branch
     public static func < (lhs: LRConflict, rhs: LRConflict) -> Bool {
         if lhs.state != rhs.state { return lhs.state < rhs.state }
         if lhs.lookahead.lrStableKey != rhs.lookahead.lrStableKey { return lhs.lookahead.lrStableKey < rhs.lookahead.lrStableKey }
