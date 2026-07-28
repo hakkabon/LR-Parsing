@@ -164,6 +164,12 @@ Candidates are retained before action deduplication. This means several LR items
 may independently justify the same shift or reduction without being mislabeled
 as a conflict.
 
+The test suite includes generation-invariant checks across LR(0), SLR, LALR,
+and LR(1), with unresolved, precedence-resolved, and policy-resolved tables. It
+also uses Grammar's `GrammarFuzzer` to generate valid recursive-expression
+sentences, verifies that LALR accepts them, and checks that regeneration
+preserves state and ACTION-decision identities.
+
 `LRAutomaton.actionDecisions` records the deterministic choice for every ACTION
 cell, including its candidates, selected action and resolution policy. The
 generator distinguishes resolved decisions from unresolved deterministic
