@@ -1,0 +1,116 @@
+import Foundation
+import Grammar
+import Lexer
+import LR_Parsing
+import Parser
+
+private struct Corpus: Decodable {
+    let schemaVersion: Int
+    let grammars: [CorpusGrammar]
+    let cases: [CorpusCase]
+}
+
+private struct CorpusGrammar: Decodable {
+    let id: String
+    let start: String
+    let terminals: [String]
+    let productions: [CorpusProduction]
+    let precedence: [CorpusPrecedence]
+}
+
+private struct CorpusProduction: Decodable { let lhs: String; let rhs: [String] }
+private struct CorpusPrecedence: Decodable { let associativity: String; let terminals: [String] }
+private struct CorpusCase: Decodable {
+    let id: String
+    let grammar: String
+    let expectedTokenKinds: [String]
+}
+
+private struct Observation: Encodable {
+    let id: String
+    let status: String
+    let diagnostics: Int
+    let recoveryEdits: Int
+}
+
+private struct NormalizedTokenStream: TokenStream {
+    let source: String
+    let values: [(Terminal, Range<String.Index>)]
+    var count: Int { values.count }
+
+    init(kinds: [String]) {
+        source = kinds.joined(separator: " ")
+        var cursor = source.startIndex
+        var result: [(Terminal, Range<String.Index>)] = []
+        for kind in kinds {
+            let end = source.index(cursor, offsetBy: kind.count)
+            result.append((Terminal(string: kind), cursor..<end))
+            cursor = end == source.endIndex ? end : source.index(after: end)
+        }
+        values = result
+    }
+
+    func terminal(at position: Int) throws -> (terminal: Terminal, range: Range<String.Index>) {
+        values[position]
+    }
+}
+
+private func makeGrammar(_ model: CorpusGrammar) -> (Grammar, LRPrecedenceSpecification?) {
+    let terminalNames = Set(model.terminals)
+    let productions = model.productions.map { production in
+        Production(
+            goal: NonTerminal(name: production.lhs),
+            rule: production.rhs.map { symbol in
+                terminalNames.contains(symbol)
+                    ? .terminal(Terminal(string: symbol))
+                    : .nonTerminal(NonTerminal(name: symbol))
+            }
+        )
+    }
+    let grammar = Grammar(
+        productions: productions,
+        start: NonTerminal(name: model.start),
+        lexicalTokens: [:]
+    )
+    guard !model.precedence.isEmpty else { return (grammar, nil) }
+    let levels = model.precedence.enumerated().map { index, level in
+        LRPrecedenceLevel(
+            index + 1,
+            associativity: LRAssociativity(rawValue: level.associativity)!,
+            terminals: Set(level.terminals.map { Terminal(string: $0) })
+        )
+    }
+    return (grammar, LRPrecedenceSpecification(levels: levels))
+}
+
+do {
+    guard CommandLine.arguments.count == 3 else {
+        throw NSError(domain: "lr-conformance", code: 2, userInfo: [NSLocalizedDescriptionKey: "usage: lr-conformance CORPUS OUTPUT"])
+    }
+    let corpus = try JSONDecoder().decode(Corpus.self, from: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1])))
+    guard corpus.schemaVersion == 1 else { throw NSError(domain: "lr-conformance", code: 2) }
+    let grammars = Dictionary(uniqueKeysWithValues: corpus.grammars.map { ($0.id, makeGrammar($0)) })
+    let observations = try corpus.cases.map { testCase -> Observation in
+        guard let (grammar, precedence) = grammars[testCase.grammar] else { throw NSError(domain: "lr-conformance", code: 2) }
+        let parser = LRParser(grammar: grammar, algorithm: .lalr, precedence: precedence)
+        let stream = NormalizedTokenStream(kinds: testCase.expectedTokenKinds)
+        let result: LRParseResult
+        do {
+            let tree = try parser.parse(stream: stream)
+            result = .init(status: .accepted, tree: tree)
+        } catch {
+            result = .init(status: .rejected, tree: nil)
+        }
+        let status = switch result.status {
+        case .accepted: "accepted"
+        case .recovered: "acceptedWithRecovery"
+        case .rejected: "rejected"
+        }
+        return Observation(id: testCase.id, status: status, diagnostics: result.diagnostics.count, recoveryEdits: result.recoveryEdits.count)
+    }
+    let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    try encoder.encode(observations).write(to: URL(fileURLWithPath: CommandLine.arguments[2]), options: .atomic)
+} catch {
+    FileHandle.standardError.write(Data("lr-conformance: \(error)\n".utf8))
+    exit(1)
+}
