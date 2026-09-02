@@ -1,6 +1,6 @@
 import Grammar
 
-public enum LRAssociativity: String, Hashable, CustomStringConvertible {
+public enum LRAssociativity: String, Hashable, Sendable, CustomStringConvertible {
     case left
     case right
     case nonAssociative

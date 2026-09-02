@@ -162,9 +162,23 @@ public final class LRTableGenerator {
             actionTable: table.action,
             gotoTable: table.gotoTable,
             conflicts: conflicts,
+            productionOccurrences: productionOccurrences(),
             actionCandidates: normalizedCandidates,
             actionDecisions: decisions
         )
+    }
+
+    private func productionOccurrences() -> [LRProductionOccurrence] {
+        var duplicateCounts: [Production: Int] = [:]
+        return grammar.productions.enumerated().map { ordinal, production in
+            let duplicateOrdinal = duplicateCounts[production, default: 0]
+            duplicateCounts[production] = duplicateOrdinal + 1
+            return LRProductionOccurrence(
+                production: production,
+                ordinal: ordinal,
+                duplicateOrdinal: duplicateOrdinal
+            )
+        }
     }
     
     // MARK: - Helper: Resolve Reduction Lookaheads

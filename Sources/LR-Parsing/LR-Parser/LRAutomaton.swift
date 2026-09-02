@@ -89,6 +89,7 @@ extension LRConflict: Comparable {
 /// artifact so diagnostics and states remain inspectable.
 public struct LRAutomaton {
     public let productions: [LRProductionArtifact]
+    public let productionOccurrences: [LRProductionOccurrence]
     public let states: [LRState]
     public let transitions: [LRTransition]
     public let actionTable: LRActionTable
@@ -105,8 +106,9 @@ public struct LRAutomaton {
     public var resolvedDecisions: [LRActionDecision] { resolvedConflicts.compactMap(\.decision) }
     public var allConflicts: [LRConflict] { (conflicts + resolvedConflicts).sorted() }
 
-    public init(states: [LRState], transitions: [LRTransition], actionTable: LRActionTable, gotoTable: LRGotoTable, conflicts: [LRConflict], resolvedConflicts: [LRConflict] = [], productions: [LRProductionArtifact]? = nil, actionCandidates: LRActionCandidateTable = [:], actionDecisions: LRActionDecisionTable = [:]) {
+    public init(states: [LRState], transitions: [LRTransition], actionTable: LRActionTable, gotoTable: LRGotoTable, conflicts: [LRConflict], resolvedConflicts: [LRConflict] = [], productions: [LRProductionArtifact]? = nil, productionOccurrences: [LRProductionOccurrence] = [], actionCandidates: LRActionCandidateTable = [:], actionDecisions: LRActionDecisionTable = [:]) {
         self.productions = productions ?? Dictionary(grouping: states.flatMap(\.items).map { LRProductionArtifact(production: $0.production) }, by: \.identity).values.compactMap(\.first).sorted { $0.identity < $1.identity }
+        self.productionOccurrences = productionOccurrences
         self.states = states
         self.transitions = transitions
         self.actionTable = actionTable
@@ -122,4 +124,7 @@ public struct LRAutomaton {
     public func state(identity: LRArtifactID) -> LRState? { states.first { $0.identity == identity } }
     public func conflict(identity: LRArtifactID) -> LRConflict? { allConflicts.first { $0.identity == identity } }
     public func production(identity: LRArtifactID) -> LRProductionArtifact? { productions.first { $0.identity == identity } }
+    public func productionOccurrence(identity: LRArtifactID) -> LRProductionOccurrence? {
+        productionOccurrences.first { $0.identity == identity }
+    }
 }

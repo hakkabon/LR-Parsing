@@ -22,4 +22,8 @@ public enum LRAction: Hashable, CustomStringConvertible {
         case .accept: return "acc"
         }
     }
+
+    public var productionIdentity: LRArtifactID? {
+        if case .reduce(let production) = self { production.lrArtifactID } else { nil }
+    }
 }

@@ -67,7 +67,17 @@ public class LRParser: DeterministicParser {
     /// Local repair tries a bounded single-token deletion or insertion first;
     /// panic mode discards input until the current state has a valid action.
     public func parseOutcome(_ source: String, recovery: RecoveryPolicy = .none, tracing: Bool = false) throws -> LRParseResult {
-        let stream = TokenizerStream(source: source, symbols: Set(symbols), keywords: [])
+        try parseOutcome(
+            stream: TokenizerStream(source: source, symbols: Set(symbols), keywords: []),
+            recovery: recovery,
+            tracing: tracing
+        )
+    }
+
+    /// Parses any positioned token stream with the same structured recovery
+    /// and tracing contract as the source-text entry point.
+    public func parseOutcome<S: TokenStream>(stream: S, recovery: RecoveryPolicy = .none, tracing: Bool = false) throws -> LRParseResult {
+        let source = stream.source
         var tokens: [(Terminal, Range<String.Index>?)] = []
         for index in 0..<stream.count { tokens.append(try stream.terminal(at: index)) }
         tokens.append((.meta(.eof), nil))

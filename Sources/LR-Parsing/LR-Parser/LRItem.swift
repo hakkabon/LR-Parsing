@@ -35,6 +35,8 @@ public struct LRItem: Hashable, CustomStringConvertible {
         return nil
     }
 
+    public var productionIdentity: LRArtifactID { production.lrArtifactID }
+
     func advanced() -> LRItem {
         return LRItem(production: production, dotIndex: dotIndex + 1, lookahead: lookahead)
     }

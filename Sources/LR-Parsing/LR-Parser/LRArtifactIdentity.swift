@@ -57,6 +57,27 @@ public struct LRProductionArtifact: Hashable {
     }
 }
 
+/// One declared production occurrence. Equal productions remain distinct in
+/// source-oriented clients even though LR state construction may share their
+/// equivalent item core.
+public struct LRProductionOccurrence: Hashable {
+    public let identity: LRArtifactID
+    public let semanticIdentity: LRArtifactID
+    public let ordinal: Int
+    public let duplicateOrdinal: Int
+    public let production: Production
+
+    public init(production: Production, ordinal: Int, duplicateOrdinal: Int) {
+        self.production = production
+        self.semanticIdentity = production.lrArtifactID
+        self.ordinal = ordinal
+        self.duplicateOrdinal = duplicateOrdinal
+        self.identity = LRArtifactID(
+            rawValue: "\(production.lrArtifactID.rawValue)#\(duplicateOrdinal)"
+        )
+    }
+}
+
 extension LRAction {
     var lrStableKey: String {
         switch self {
