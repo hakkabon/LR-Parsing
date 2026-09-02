@@ -96,8 +96,7 @@ do {
         let stream = NormalizedTokenStream(kinds: testCase.expectedTokenKinds)
         let result: LRParseResult
         do {
-            let tree = try parser.parse(stream: stream)
-            result = .init(status: .accepted, tree: tree)
+            result = try parser.parseOutcome(stream: stream, recovery: .localRepair(maxEdits: 8))
         } catch {
             result = .init(status: .rejected, tree: nil)
         }

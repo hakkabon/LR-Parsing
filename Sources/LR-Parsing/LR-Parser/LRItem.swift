@@ -54,7 +54,7 @@ public struct LRItem: Hashable, CustomStringConvertible {
         }
         if dotIndex == production.rule.count { ruleStr += "•" }
         // Only show lookahead if it exists
-        let laStr = lookahead.isEmpty ? "" : " , \(lookahead.map{ $0.description }.joined(separator: "/"))"
+        let laStr = lookahead.isEmpty ? "" : " , \(lookahead.map(\.description).sorted().joined(separator: "/"))"
         return "[\(production.goal) -> \(ruleStr)\(laStr)]"
     }
 }

@@ -45,12 +45,28 @@ public extension LRParser {
 
 public extension Terminal {
     var lrDisplayName: String { self == .meta(.eof) ? "$" : description }
+    /// The unquoted symbol key used by neutral tables and token streams.
+    var lrSymbolName: String {
+        switch self {
+        case .string(let value): value
+        case .meta(.eof): "$"
+        default: description
+        }
+    }
 }
 
 public extension Symbol {
     var lrDisplayName: String {
         switch self {
         case .terminal(let terminal): terminal.lrDisplayName
+        case .nonTerminal(let nonterminal): nonterminal.name
+        case .metaSymbol(let symbol): symbol.rawValue
+        }
+    }
+
+    var lrSymbolName: String {
+        switch self {
+        case .terminal(let terminal): terminal.lrSymbolName
         case .nonTerminal(let nonterminal): nonterminal.name
         case .metaSymbol(let symbol): symbol.rawValue
         }
