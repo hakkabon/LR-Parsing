@@ -30,7 +30,7 @@ let package = Package(
                 .product(name: "GrammarDiagram", package: "GrammarDiagram"),
                 .product(name: "TerminalColors", package: "TerminalColors"),
             ],
-            path: "Sources/LR-Parsing",
+            path: "Sources/LR-Parsing"
         ),
         .testTarget(
             name: "LR-ParsingTests",
