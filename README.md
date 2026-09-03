@@ -391,7 +391,6 @@ LR-Parsing/
 ├── Sources/
 │   ├── LR-Parsing/
 │   │   ├── Parser.swift              # Parser protocol + ParseTree typealias
-│   │   ├── ParserLogger.swift        # OSLog category
 │   │   ├── LR-Parser/
 │   │   │   ├── LRAction.swift        # shift / reduce / accept enum
 │   │   │   ├── LRItem.swift          # LR(0)/LR(1) item with dot & lookahead

@@ -10,7 +10,6 @@ import Foundation
 import Grammar
 import Parser
 import Lexer
-import OSLog
 
 public enum LRParseError: Error, CustomStringConvertible {
     case generationFailed(String)
