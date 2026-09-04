@@ -267,4 +267,18 @@ struct ParserOutcomeTests {
         #expect(outcome.recoveryEdits.count == 1)
         if case .insert = outcome.recoveryEdits[0] {} else { Issue.record("Expected insertion repair") }
     }
+
+    @Test("local insertion repair chooses a stable terminal")
+    func deterministicInsertionRepair() throws {
+        let grammar = try Grammar(bnf: "<S> ::= \"b\" \"z\" | \"a\" \"z\"", start: "S")
+        let outcome = try LRParser(grammar: grammar, algorithm: .lalr)
+            .parseOutcome("z", recovery: .localRepair(maxEdits: 1))
+        #expect(outcome.status == .recovered)
+        #expect(outcome.recoveryEdits.count == 1)
+        if case .insert(let terminal, _) = outcome.recoveryEdits[0] {
+            #expect(terminal == Terminal(string: "a"))
+        } else {
+            Issue.record("Expected insertion repair")
+        }
+    }
 }

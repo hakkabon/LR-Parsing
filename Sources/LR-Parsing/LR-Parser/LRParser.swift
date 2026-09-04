@@ -133,7 +133,11 @@ public class LRParser: DeterministicParser {
                         position += 1
                         continue
                     }
-                    if let insertion = table.action[state]?.first(where: { if case .shift = $0.value { return true }; return false }) {
+                    let insertion = table.action[state]?
+                        .filter { if case .shift = $0.value { return true }; return false }
+                        .sorted { stableTerminalKey($0.key) < stableTerminalKey($1.key) }
+                        .first
+                    if let insertion {
                         edits.append(.insert(terminal: insertion.key, atToken: position))
                         record(.recovery, tokenIndex: position, lookahead: terminal, state: state, message: edits.last?.description)
                         action = insertion.value
@@ -277,6 +281,21 @@ public class LRParser: DeterministicParser {
                 return resultNode
             }
         }
+    }
+}
+
+private func stableTerminalKey(_ terminal: Terminal) -> String {
+    switch terminal {
+    case .string(let string):
+        "0:\(string)"
+    case .stringList(let list):
+        "1:\(list.joined(separator: "\u{0}"))"
+    case .characterRange(let range):
+        "2:\(range.lowerBound)\u{0}\(range.upperBound)"
+    case .regularExpression(let expression):
+        "3:\(expression.pattern)"
+    case .meta(let meta):
+        "4:\(meta.rawValue)"
     }
 }
 
