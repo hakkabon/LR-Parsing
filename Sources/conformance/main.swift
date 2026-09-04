@@ -29,6 +29,7 @@ private struct CorpusCase: Decodable {
 private struct Observation: Encodable {
     let id: String
     let status: String
+    let root: String?
     let diagnostics: Int
     let recoveryEdits: Int
 }
@@ -88,7 +89,7 @@ do {
         throw NSError(domain: "lr-conformance", code: 2, userInfo: [NSLocalizedDescriptionKey: "usage: lr-conformance CORPUS OUTPUT"])
     }
     let corpus = try JSONDecoder().decode(Corpus.self, from: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1])))
-    guard corpus.schemaVersion == 1 else { throw NSError(domain: "lr-conformance", code: 2) }
+    guard (1...2).contains(corpus.schemaVersion) else { throw NSError(domain: "lr-conformance", code: 2) }
     let grammars = Dictionary(uniqueKeysWithValues: corpus.grammars.map { ($0.id, makeGrammar($0)) })
     let observations = try corpus.cases.map { testCase -> Observation in
         guard let (grammar, precedence) = grammars[testCase.grammar] else { throw NSError(domain: "lr-conformance", code: 2) }
@@ -105,7 +106,7 @@ do {
         case .recovered: "acceptedWithRecovery"
         case .rejected: "rejected"
         }
-        return Observation(id: testCase.id, status: status, diagnostics: result.diagnostics.count, recoveryEdits: result.recoveryEdits.count)
+        return Observation(id: testCase.id, status: status, root: result.tree?.root?.name, diagnostics: result.diagnostics.count, recoveryEdits: result.recoveryEdits.count)
     }
     let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     try encoder.encode(observations).write(to: URL(fileURLWithPath: CommandLine.arguments[2]), options: .atomic)

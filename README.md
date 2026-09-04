@@ -1,5 +1,9 @@
 # LR-Parsing
 
+The `lr-conformance` executable accepts shared ecosystem corpus versions 1 and
+2. Version-2 observations add normalized tree roots while keeping LR states and
+trace wording outside the cross-repository contract.
+
 A Swift package implementing a family of bottom-up **LR parsers** — LR(0), SLR(1), LALR(1), and canonical LR(1) — capable of parsing any context-free grammar (CFG) that belongs to the respective language class. Given a grammar and an input string the parser produces a typed, traversable **parse tree** that can be pretty-printed to the terminal, exported as a Graphviz DOT diagram, or transformed programmatically.
 
 [![Swift 5.9+](https://img.shields.io/badge/Swift-5.9%2B-orange.svg)](https://swift.org)  
