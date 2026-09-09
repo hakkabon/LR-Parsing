@@ -1,5 +1,6 @@
 import Testing
 import Grammar
+import Parser
 import Lexer
 @testable import LR_Parsing
 
@@ -22,6 +23,23 @@ private struct IdentityTokenStream: TokenStream {
     func terminal(at position: Int) throws -> (terminal: Terminal, range: Range<String.Index>) {
         values[position]
     }
+}
+
+@Test("LR trace projects to semantic Parser replay events")
+func parserContractReplayProjection() throws {
+    let grammar = try Grammar(bnf: "<S> ::= 'a'", start: "S")
+    let result = try LRParser(grammar: grammar, algorithm: .lalr)
+        .parseOutcome("a", tracing: true)
+    let replay = result.trace.map(\.parseContractEvent)
+    let snapshot = result.contractSnapshot(
+        engine: .init(identity: "lalr", displayName: "LALR", algorithm: "lalr"),
+        replay: replay
+    )
+
+    #expect(snapshot.status == .accepted)
+    #expect(snapshot.replay.first?.kind == .start)
+    #expect(snapshot.replay.contains { $0.kind == .applyProduction && $0.productionID != nil })
+    #expect(snapshot.replay.last?.kind == .accept)
 }
 
 @Suite("Stable LR artifact identity")

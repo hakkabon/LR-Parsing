@@ -120,6 +120,7 @@ public class LRParser: DeterministicParser {
                     expected: Array(expected),
                     found: terminal,
                     parserState: state,
+                    tokenIndex: position,
                     source: source
                 ))
                 record(.error, tokenIndex: position, lookahead: terminal, state: state, message: "unexpected token")

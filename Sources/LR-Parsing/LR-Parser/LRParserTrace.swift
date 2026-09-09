@@ -7,6 +7,7 @@
 //
 
 import Grammar
+import Parser
 
 public struct LRTraceState: Hashable, CustomStringConvertible {
     public let index: Int
@@ -59,5 +60,29 @@ public struct LRParserTraceEvent: CustomStringConvertible {
         if let production { details += ", \(production)" }
         if let message { details += ": \(message)" }
         return details
+    }
+}
+
+public extension LRParserTraceEvent {
+    /// Engine-neutral semantic projection used by Parser's replay contract.
+    var parseContractEvent: ParseReplayEvent {
+        let eventKind: ParseReplayEventKind = switch kind {
+        case .start: .start
+        case .inspect: .inspect
+        case .shift: .consume
+        case .reduce: .applyProduction
+        case .accept: .accept
+        case .error: .reject
+        case .recovery: .recover
+        }
+        return ParseReplayEvent(
+            step: step,
+            kind: eventKind,
+            tokenIndex: tokenIndex,
+            productionID: productionIdentity.map {
+                GrammarProductionID(rawValue: $0.rawValue)
+            },
+            diagnosticReason: kind == .error ? .unexpectedToken : nil
+        )
     }
 }
