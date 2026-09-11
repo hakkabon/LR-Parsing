@@ -443,15 +443,29 @@ LRTableGenerator
 
 ## Improvements & Known Limitations
 
-See the detailed improvement notes in the repository's [IMPROVEMENTS.md](IMPROVEMENTS.md) for a full discussion. Key areas include:
+The 0.2.2 truthfulness release audited the older limitation list against the
+current implementation:
 
-- Table generation is re-run on every `parse()` call instead of being cached at `init` time
-- LR(0) reduce-on-all-terminals strategy causes unnecessary conflicts for most grammars
-- Conflict handling in `addShift` silently favors shift without propagating an error
-- ~~The `extractTerminal` method is defined but never called in the parse loop~~ — resolved: both `extractTerminal` and the inline `getTerminal` closure it duplicated were removed when the parser adopted `TokenStream`; token-to-`Terminal` mapping now happens once, in `Lexer`'s `TokenizerStream`/`LexerTokenStream`, not in this package
-- Strict parsing throws `LRParseError`; recoverable parsing returns the shared `ParseDiagnostic` model with one-based source locations and optional LR state information
-- The LALR GOTO fixup comment notes a potential correctness issue when the merged state set doesn't exactly match generated goto sets
-- `Unique.< ` comparator compares `id` to itself rather than `lhs.id` to `rhs.id`
+- `LRParser` now constructs its automaton once at initialization and reuses it
+  for strict parsing, structured outcomes, tracing, and inspection.
+- Reducing on every grammar terminal is intentional LR(0) behavior. SLR, LALR,
+  and LR(1) use their progressively narrower lookahead rules.
+- The former `addShift`/`addReduce` helpers were dead code. All live ACTION
+  candidates now pass through the structured decision model; fallback shift,
+  precedence, policies, and unresolved status are explicit and tested.
+- LALR transitions resolve merged states by LR(0) core. Cross-algorithm
+  invariants now verify that every transition has valid endpoints, terminal
+  transitions have matching shift candidates, and nonterminal transitions
+  agree with GOTO entries.
+- Stable item/conflict comparison uses the correct left- and right-hand
+  identities; the old `Unique.<` issue no longer exists in this implementation.
+- Strict parsing throws `LRParseError`; recoverable parsing returns the shared
+  `ParseDiagnostic` model with one-based source locations and optional LR state
+  information.
+
+The invariant suite also fuzzes accepted sentences and requires stable state,
+transition, candidate, decision, and conflict identities across repeated access
+to the cached artifact.
 
 ---
 
@@ -461,7 +475,7 @@ Add the package to your `Package.swift` dependencies:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/hakkabon/LR-Parsing.git", branch: "main"),
+    .package(url: "https://github.com/hakkabon/LR-Parsing.git", .upToNextMinor(from: "0.2.2")),
 ],
 targets: [
     .target(

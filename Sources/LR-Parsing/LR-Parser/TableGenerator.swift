@@ -188,10 +188,10 @@ public final class LRTableGenerator {
         
         switch algorithm {
         case .lr0:
-            // LR(0): Reduce on EVERYTHING (Grammar terminals + EOF)
-            // Ideally iterate all known terminals. Using a wildcard concept is better,
-            // but here we just collect all from grammar for simplicity.
-            // (Assuming caller handles fetching all valid terminals)
+            // Canonical LR(0) has no lookahead component: a completed item
+            // reduces on every grammar terminal and EOF. Conflicts revealed by
+            // this deliberately broad rule are part of the algorithm, not an
+            // approximation; SLR narrows them with FOLLOW sets.
             return getAllTerminals()
             
         case .slr:
@@ -290,10 +290,10 @@ public final class LRTableGenerator {
             }
         }
         
-        // IMPORTANT: LALR GOTO fix up
-        // After merging, the 'goto' transitions must point to the new merged sets.
-        // Because we return [Set<LRItem>], the main loop's 'gotoState' will generate
-        // a set that exactly matches one of these merged sets (mathematically guaranteed).
+        // Transitions are resolved against these states by LR(0) core in
+        // `generate()`. The invariant suite checks that every resulting
+        // terminal transition has its shift candidate and every nonterminal
+        // transition agrees with the emitted GOTO table.
         return mergedStates
     }
 
@@ -512,40 +512,6 @@ public final class LRTableGenerator {
             }
         }
         return best
-    }
-    
-    private func addShift(to table: inout LRTable, state: Int, terminal: Terminal, target: Int) {
-        if let existing = table.action[state]?[terminal] {
-            // Check existing action
-            switch existing {
-            case .shift(let s):
-                if s != target { print("Shift/Shift Conflict!") }
-            case .reduce(_), .accept:
-                print("Shift/Reduce Conflict in state \(state) on \(terminal). (Shift favored)")
-            }
-        }
-        table.action[state]?[terminal] = .shift(target)
-    }
-    
-    private func addReduce(to table: inout LRTable, state: Int, terminal: Terminal, production: Production) -> Bool {
-        if let existing = table.action[state]?[terminal] {
-            switch existing {
-            case .shift(_):
-                print("Shift/Reduce Conflict in state \(state) on \(terminal). Algorithm: \(algorithm)")
-                // In generic generators, you usually favor shift.
-                // However, returning 'true' (error) is safer for strictness.
-                return true
-            case .reduce(let p):
-                if p != production {
-                    print("Reduce/Reduce Conflict in state \(state) on \(terminal).")
-                    return true
-                }
-            case .accept:
-                return true
-            }
-        }
-        table.action[state]?[terminal] = .reduce(production)
-        return false
     }
     
     private func getAllTerminals() -> Set<Terminal> {

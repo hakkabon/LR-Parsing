@@ -12,6 +12,58 @@ private struct TestConflictPolicy: LRConflictResolutionPolicy {
 
 @Suite("LR generation artifacts")
 struct LRArtifactTests {
+    @Test("cached artifacts satisfy state, transition, GOTO, and ACTION invariants")
+    func artifactInvariants() throws {
+        let grammars = [
+            try Grammar(bnf: "<S> ::= \"a\" <S> | \"b\"", start: "S"),
+            try Grammar(
+                bnf: """
+                <S> ::= <L> \"=\" <R> | <R>
+                <L> ::= \"*\" <R> | \"id\"
+                <R> ::= <L>
+                """,
+                start: "S"
+            ),
+        ]
+
+        for grammar in grammars {
+            for algorithm in LRParser.Algorithm.allCases {
+                let parser = LRParser(grammar: grammar, algorithm: algorithm)
+                let first = parser.generate()
+                let second = parser.generate()
+
+                #expect(first.states.map(\.identity) == second.states.map(\.identity))
+                #expect(first.transitions.map(\.identity) == second.transitions.map(\.identity))
+                #expect(first.states.map(\.id) == Array(first.states.indices))
+                #expect(Set(first.states.map(\.identity)).count == first.states.count)
+
+                let stateIDs = Set(first.states.map(\.id))
+                for transition in first.transitions {
+                    #expect(stateIDs.contains(transition.source))
+                    #expect(stateIDs.contains(transition.target))
+                    switch transition.symbol {
+                    case .terminal(let terminal):
+                        let candidates = first.actionCandidates[transition.source]?[terminal] ?? []
+                        #expect(candidates.contains { $0.action == .shift(transition.target) })
+                    case .nonTerminal(let nonterminal):
+                        #expect(first.gotoTable[transition.source]?[nonterminal] == transition.target)
+                    case .metaSymbol:
+                        Issue.record("LR automata must not contain meta-symbol transitions")
+                    }
+                }
+
+                for (state, row) in first.actionTable {
+                    #expect(stateIDs.contains(state))
+                    for (lookahead, action) in row {
+                        let decision = try #require(first.actionDecisions[state]?[lookahead])
+                        #expect(decision.selectedAction == action)
+                        #expect(decision.candidates.contains { $0.action == action })
+                    }
+                }
+            }
+        }
+    }
+
     @Test("artifact exposes states, transitions, ACTION, and GOTO")
     func exposesAutomaton() throws {
         let grammar = try Grammar(bnf: "<S> ::= \"a\"", start: "S")

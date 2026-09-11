@@ -35,16 +35,22 @@ public class LRParser: DeterministicParser {
         case lr0, slr, lr1, lalr
     }
 
-    let generator: LRTableGenerator
+    private let automaton: LRAutomaton
     let symbols = ["|", "\\", "^", ":", ",", "$", ".", "\"", "¶", ">", "#", "+", "-", "{","[", "<", "(",
                    "'", "}", "]", ":]", ")", ";", "/", "*", "?", "??", ":=", "="]
 
     public init(grammar: Grammar, algorithm: Algorithm, precedence: LRPrecedenceSpecification? = nil, resolutionPolicy: (any LRConflictResolutionPolicy)? = nil) {
-        self.generator = LRTableGenerator(grammar: grammar, algorithm: algorithm, precedence: precedence, resolutionPolicy: resolutionPolicy)
+        self.automaton = LRTableGenerator(
+            grammar: grammar,
+            algorithm: algorithm,
+            precedence: precedence,
+            resolutionPolicy: resolutionPolicy
+        ).generate()
     }
 
-    /// Generates an inspectable automaton even when the grammar has conflicts.
-    public func generate() -> LRAutomaton { generator.generate() }
+    /// Returns the inspectable automaton constructed once at initialization.
+    /// Conflicted grammars still retain their complete artifact and decisions.
+    public func generate() -> LRAutomaton { automaton }
     
     struct StackElement {
         let state: Int
@@ -196,10 +202,7 @@ public class LRParser: DeterministicParser {
     /// - Parameter stream: A positioned sequence of tokens, each resolvable
     ///   to a `Terminal` and a source `Range<String.Index>`.
     public func parse<S: TokenStream>(stream: S) throws -> ParseTree {
-        // Generate Tables
-        // In a real scenario, you might generate these once in 'init' and throw there,
-        // but checking here ensures safety.
-        let automaton = generator.generate()
+        let automaton = generate()
         guard automaton.unresolvedConflicts.isEmpty else {
             throw LRParseError.generationFailed("Grammar contains unresolved conflicts (not LR-compliant).")
         }
