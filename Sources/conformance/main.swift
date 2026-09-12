@@ -96,7 +96,7 @@ do {
         throw NSError(domain: "lr-conformance", code: 2, userInfo: [NSLocalizedDescriptionKey: "usage: lr-conformance CORPUS OUTPUT"])
     }
     let corpus = try JSONDecoder().decode(Corpus.self, from: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1])))
-    guard (1...3).contains(corpus.schemaVersion) else { throw NSError(domain: "lr-conformance", code: 2) }
+    guard (1...4).contains(corpus.schemaVersion) else { throw NSError(domain: "lr-conformance", code: 2) }
     let corpusGrammars = Dictionary(uniqueKeysWithValues: corpus.grammars.map { ($0.id, $0) })
     let grammars = Dictionary(uniqueKeysWithValues: corpus.grammars.map { ($0.id, makeGrammar($0)) })
     let observations = try corpus.cases.map { testCase -> Observation in
