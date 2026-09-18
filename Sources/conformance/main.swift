@@ -31,8 +31,39 @@ private struct Observation: Encodable {
     let status: String
     let root: String?
     let diagnostics: Int
-    let recoveryEdits: Int
+    let recoveryEdits: [RecoveryObservation]
     let replay: ReplayObservation?
+}
+
+private struct RecoveryObservation: Encodable {
+    let kind: String
+    let terminal: String?
+    let terminals: [String]?
+    let atToken: Int?
+    let fromToken: Int?
+
+    init(_ edit: RecoveryEdit) {
+        switch edit {
+        case .insert(let terminal, let index):
+            kind = "insert"; self.terminal = corpusTerminal(terminal)
+            terminals = nil; atToken = index; fromToken = nil
+        case .delete(let terminal, let index):
+            kind = "delete"; self.terminal = corpusTerminal(terminal)
+            terminals = nil; atToken = index; fromToken = nil
+        case .skip(let terminals, let index):
+            kind = "skip"; terminal = nil
+            self.terminals = terminals.map(corpusTerminal)
+            atToken = nil; fromToken = index
+        }
+    }
+}
+
+private func corpusTerminal(_ terminal: Terminal) -> String {
+    switch terminal {
+    case .string(let value): value
+    case .meta(let value): value.rawValue
+    default: terminal.description
+    }
 }
 
 private struct ReplayObservation: Encodable {
@@ -96,7 +127,7 @@ do {
         throw NSError(domain: "lr-conformance", code: 2, userInfo: [NSLocalizedDescriptionKey: "usage: lr-conformance CORPUS OUTPUT"])
     }
     let corpus = try JSONDecoder().decode(Corpus.self, from: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1])))
-    guard (1...4).contains(corpus.schemaVersion) else { throw NSError(domain: "lr-conformance", code: 2) }
+    guard (1...5).contains(corpus.schemaVersion) else { throw NSError(domain: "lr-conformance", code: 2) }
     let corpusGrammars = Dictionary(uniqueKeysWithValues: corpus.grammars.map { ($0.id, $0) })
     let grammars = Dictionary(uniqueKeysWithValues: corpus.grammars.map { ($0.id, makeGrammar($0)) })
     let observations = try corpus.cases.map { testCase -> Observation in
@@ -127,7 +158,11 @@ do {
                 event.productionIdentity.flatMap { identities[$0.rawValue] }
             }
         )
-        return Observation(id: testCase.id, status: status, root: result.tree?.root?.name, diagnostics: result.diagnostics.count, recoveryEdits: result.recoveryEdits.count, replay: replay)
+        return Observation(
+            id: testCase.id, status: status, root: result.tree?.root?.name,
+            diagnostics: result.diagnostics.count,
+            recoveryEdits: result.recoveryEdits.map(RecoveryObservation.init), replay: replay
+        )
     }
     let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     try encoder.encode(observations).write(to: URL(fileURLWithPath: CommandLine.arguments[2]), options: .atomic)

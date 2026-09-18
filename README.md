@@ -1,8 +1,8 @@
 # LR-Parsing
 
 The `lr-conformance` executable accepts shared ecosystem corpus versions 1
-through 4. Version 4 adds the complete ten-engine catalog and an LL(1)
-comparison grammar while keeping LR states and trace wording outside the
+through 5. Version 5 reports the exact ordered insert/delete/skip script in
+original-token coordinates; LR states and trace wording remain outside the
 cross-repository contract.
 
 A Swift package implementing a family of bottom-up **LR parsers** — LR(0), SLR(1), LALR(1), and canonical LR(1) — capable of parsing any context-free grammar (CFG) that belongs to the respective language class. Given a grammar and an input string the parser produces a typed, traversable **parse tree** that can be pretty-printed to the terminal, exported as a Graphviz DOT diagram, or transformed programmatically.
@@ -444,7 +444,8 @@ LRTableGenerator
 
 ## Improvements & Known Limitations
 
-The 0.2.3 compatibility release adds shared corpus v4 decoding. It follows the
+The next compatibility release adds shared corpus v5 decoding and exact
+structured recovery observations. The 0.2.3 release added v4. It follows the
 0.2.2 truthfulness release, which audited the older limitation list against the
 current implementation:
 
