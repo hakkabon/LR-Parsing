@@ -10,12 +10,13 @@ let package = Package(
         .library(name: "LR-Parsing", targets: ["LR-Parsing"]),
         .executable(name: "lr-parse", targets: ["lr-parse"]),
         .executable(name: "lr-conformance", targets: ["lr-conformance"]),
+        .executable(name: "lr-microbenchmark", targets: ["lr-microbenchmark"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.6.2"),
         .package(url: "https://github.com/JohnSundell/ShellOut.git", from: "2.0.0"),
         .package(url: "https://github.com/hakkabon/Grammar.git", .upToNextMinor(from: "0.3.0")),
-        .package(url: "https://github.com/hakkabon/Parser.git", .upToNextMinor(from: "0.3.0")),
+        .package(url: "https://github.com/hakkabon/Parser.git", .upToNextMinor(from: "0.4.1")),
         .package(url: "https://github.com/hakkabon/Lexer.git", .upToNextMinor(from: "0.2.0")),
         .package(url: "https://github.com/hakkabon/GrammarDiagram.git", .upToNextMinor(from: "0.1.0")),
         .package(url: "https://github.com/hakkabon/TerminalColors.git", .upToNextMinor(from: "0.1.0")),
@@ -37,6 +38,13 @@ let package = Package(
             dependencies: [
                 "LR-Parsing",
                 .product(name: "Grammar", package: "Grammar"),
+                .product(name: "Parser", package: "Parser"),
+            ]
+        ),
+        .executableTarget(
+            name: "lr-microbenchmark",
+            dependencies: [
+                "LR-Parsing",
                 .product(name: "Parser", package: "Parser"),
             ]
         ),
