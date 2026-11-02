@@ -1,5 +1,9 @@
 # LR-Parsing
 
+`LRIncrementalRuntime` retains the previous run's native LR stack checkpoints
+and resumes at the newest checkpoint whose token prefix is unchanged. Its
+result reports the resumed token and reused trace-frame count as reuse evidence.
+
 The `lr-conformance` executable accepts shared ecosystem corpus versions 1
 through 5. Version 5 reports the exact ordered insert/delete/skip script in
 original-token coordinates; LR states and trace wording remain outside the
