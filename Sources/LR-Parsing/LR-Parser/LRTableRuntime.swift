@@ -101,7 +101,7 @@ public struct LRRuntimeCheckpoint: Hashable, Sendable {
     }
 }
 
-public struct LRRuntimeResult: Sendable {
+public struct LRRuntimeResult: Hashable, Sendable {
     public let tree: LRRuntimeNode?
     public let frames: [LRRuntimeFrame]
     public let outcome: LRRuntimeOutcome

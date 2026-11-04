@@ -2,7 +2,16 @@
 
 `LRIncrementalRuntime` retains the previous run's native LR stack checkpoints
 and resumes at the newest checkpoint whose token prefix is unchanged. Its
-result reports the resumed token and reused trace-frame count as reuse evidence.
+result reports the resumed token, reused LR stack/node state, stable table
+identity, and shared `IncrementalExecutionEvidence`. Artifact changes, invalid
+previous results, missing useful checkpoints, and forced conflict decisions
+produce explicit fallback reasons rather than being reported as incremental
+work. `LRIncrementalParser` adapts the native runtime to the dependency-free
+`IncrementalParsing` session and differential-validation contracts while
+leaving tokenization in the caller or language kit.
+
+See [Phase 10: Native LR adoption](Documentation/NativeIncrementalParsing.md)
+for checkpoint safety, evidence semantics, and validation boundaries.
 
 The `lr-conformance` executable accepts shared ecosystem corpus versions 1
 through 5. Version 5 reports the exact ordered insert/delete/skip script in

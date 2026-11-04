@@ -20,6 +20,7 @@ let package = Package(
         .package(url: "https://github.com/hakkabon/Lexer.git", .upToNextMinor(from: "0.2.0")),
         .package(url: "https://github.com/hakkabon/GrammarDiagram.git", .upToNextMinor(from: "0.1.0")),
         .package(url: "https://github.com/hakkabon/TerminalColors.git", .upToNextMinor(from: "0.1.0")),
+        .package(path: "../Incremental-Parsing"),
     ],
     targets: [
         .target(
@@ -30,6 +31,7 @@ let package = Package(
                 .product(name: "Lexer", package: "Lexer"),
                 .product(name: "GrammarDiagram", package: "GrammarDiagram"),
                 .product(name: "TerminalColors", package: "TerminalColors"),
+                .product(name: "IncrementalParsing", package: "Incremental-Parsing"),
             ],
             path: "Sources/LR-Parsing"
         ),
@@ -39,6 +41,7 @@ let package = Package(
                 "LR-Parsing",
                 .product(name: "Grammar", package: "Grammar"),
                 .product(name: "Parser", package: "Parser"),
+                .product(name: "IncrementalParsing", package: "Incremental-Parsing"),
             ]
         ),
         .executableTarget(
