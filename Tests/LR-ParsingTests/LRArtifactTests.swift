@@ -1,6 +1,7 @@
 import Testing
 import Grammar
 import Parser
+import IncrementalParsing
 @testable import LR_Parsing
 
 private struct TestConflictPolicy: LRConflictResolutionPolicy {
@@ -299,6 +300,27 @@ struct ParserOutcomeTests {
         #expect(diagnostic.parserState != nil)
         #expect(diagnostic.found?.description == "\"x\"")
         #expect(!DiagnosticReporter().string(for: outcome.diagnostics).isEmpty)
+    }
+
+    @Test("local repair exports the engine-neutral recovery plan")
+    func portableLocalRepair() throws {
+        let grammar = try Grammar(bnf: "<S> ::= \"a\" \"b\"", start: "S")
+        let outcome = try LRParser(grammar: grammar, algorithm: .lalr)
+            .parseOutcome("a x b", recovery: .localRepair(maxEdits: 1))
+        let locations = [
+            ParseRecoveryTokenLocation(tokenIndex: 0, id: "a#0", range: SourceRange(0, 1)),
+            ParseRecoveryTokenLocation(tokenIndex: 1, id: "x#1", range: SourceRange(2, 3)),
+            ParseRecoveryTokenLocation(tokenIndex: 2, id: "b#2", range: SourceRange(4, 5)),
+        ]
+
+        let plan = try outcome.incrementalRecoveryPlan(
+            tokens: locations, endOfInputOffset: 5)
+
+        #expect(plan.totalCost == 1)
+        #expect(plan.steps.count == 1)
+        #expect(plan.steps[0].action == .delete("x#1", range: SourceRange(2, 3)))
+        #expect(plan.steps[0].expected == [.literal("b")])
+        #expect(plan.steps[0].diagnosticID == "parser.diagnostic.0")
     }
 
     @Test("panic recovery skips to a viable token")

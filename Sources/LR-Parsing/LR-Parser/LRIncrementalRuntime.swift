@@ -173,6 +173,7 @@ public final class LRIncrementalRuntime: @unchecked Sendable {
                 frames: parsed.frames,
                 outcome: parsed.outcome,
                 diagnostics: parsed.diagnostics,
+                recoveryEdits: parsed.recoveryEdits,
                 checkpoints: reusableResult.checkpoints.filter {
                     $0.tokenIndex < checkpoint.tokenIndex
                 } + parsed.checkpoints)

@@ -1,4 +1,6 @@
 import Testing
+import Parser
+import IncrementalParsing
 @testable import LR_Parsing
 
 @Suite("Neutral LR table runtime")
@@ -39,6 +41,59 @@ struct LRTableRuntimeTests {
         let result = LRTableRuntime.parse([], table: table, recovery: .init(maximumDiagnostics: 1, preferredInsertions: ["a"]))
         #expect(result.outcome == .accepted)
         #expect(result.diagnostics.first?.recovery == .insertedToken)
+        #expect(result.recoveryEdits == [.insert(symbol: "a", atToken: 0)])
         #expect(result.tree?.children.first?.isMissing == true)
+    }
+
+    @Test("persisted runtime recovery exports stable deletion evidence")
+    func portableDeletionRecovery() throws {
+        let result = LRTableRuntime.parse(
+            ["x", "a"], table: table,
+            recovery: .init(maximumDiagnostics: 1))
+        #expect(result.outcome == .accepted)
+        #expect(result.recoveryEdits == [.delete(symbol: "x", atToken: 0)])
+
+        let plan = try result.incrementalRecoveryPlan(
+            tokens: [
+                ParseRecoveryTokenLocation(
+                    tokenIndex: 0, id: "x#0", range: SourceRange(0, 1)),
+                ParseRecoveryTokenLocation(
+                    tokenIndex: 1, id: "a#1", range: SourceRange(2, 3)),
+            ],
+            endOfInputOffset: 3)
+
+        #expect(plan.steps.count == 1)
+        #expect(plan.steps[0].action == .delete("x#0", range: SourceRange(0, 1)))
+        #expect(plan.steps[0].expected == [.literal("a")])
+        #expect(plan.steps[0].diagnosticID == "lr-runtime.diagnostic.0")
+    }
+
+    @Test("synchronization records the exact discarded token span")
+    func portableSynchronizationRecovery() throws {
+        let emptyTable = LRRuntimeTable(
+            terminals: ["$"],
+            productions: [],
+            cells: [.init(state: 0, symbol: "$", actions: [.accept])])
+        let result = LRTableRuntime.parse(
+            ["x", "y"], table: emptyTable,
+            recovery: .init(maximumDiagnostics: 1))
+
+        #expect(result.outcome == .accepted)
+        #expect(result.recoveryEdits == [
+            .skip(symbols: ["x", "y"], fromToken: 0),
+        ])
+        let plan = try result.incrementalRecoveryPlan(
+            tokens: [
+                ParseRecoveryTokenLocation(
+                    tokenIndex: 0, id: "x#0", range: SourceRange(0, 1)),
+                ParseRecoveryTokenLocation(
+                    tokenIndex: 1, id: "y#1", range: SourceRange(2, 3)),
+            ],
+            endOfInputOffset: 3)
+
+        #expect(plan.totalCost == 2)
+        #expect(plan.steps[0].action == .skip(
+            ["x#0", "y#1"], range: SourceRange(0, 3)))
+        #expect(plan.steps[0].diagnosticID == "lr-runtime.diagnostic.0")
     }
 }

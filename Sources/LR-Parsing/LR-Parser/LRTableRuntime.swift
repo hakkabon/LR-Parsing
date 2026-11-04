@@ -58,6 +58,15 @@ public enum LRRuntimeRecoveryKind: String, Hashable, Codable, Sendable {
     case deletedToken, insertedToken, synchronized
 }
 
+/// Exact token-coordinate repair evidence produced while executing a
+/// persisted LR table. Unlike the human-readable diagnostic detail, this is
+/// suitable for projection into the shared recovery/replay contract.
+public enum LRRuntimeRecoveryEdit: Hashable, Sendable {
+    case insert(symbol: String, atToken: Int)
+    case delete(symbol: String, atToken: Int)
+    case skip(symbols: [String], fromToken: Int)
+}
+
 public struct LRRuntimeDiagnostic: Hashable, Sendable {
     public let tokenIndex: Int
     public let state: Int
@@ -106,7 +115,24 @@ public struct LRRuntimeResult: Hashable, Sendable {
     public let frames: [LRRuntimeFrame]
     public let outcome: LRRuntimeOutcome
     public let diagnostics: [LRRuntimeDiagnostic]
+    public let recoveryEdits: [LRRuntimeRecoveryEdit]
     public let checkpoints: [LRRuntimeCheckpoint]
+
+    public init(
+        tree: LRRuntimeNode?,
+        frames: [LRRuntimeFrame],
+        outcome: LRRuntimeOutcome,
+        diagnostics: [LRRuntimeDiagnostic],
+        recoveryEdits: [LRRuntimeRecoveryEdit] = [],
+        checkpoints: [LRRuntimeCheckpoint]
+    ) {
+        self.tree = tree
+        self.frames = frames
+        self.outcome = outcome
+        self.diagnostics = diagnostics
+        self.recoveryEdits = recoveryEdits
+        self.checkpoints = checkpoints
+    }
 }
 
 /// Canonical deterministic execution for generated or persisted LR tables.
@@ -135,6 +161,10 @@ public enum LRTableRuntime {
         if let checkpoint { checkpoints[checkpoint.tokenIndex] = checkpoint }
         else { checkpoints[0] = .init(tokenIndex: 0, steps: 0, states: states, symbols: symbols, nodes: nodes, frameCount: 0) }
         var diagnostics: [LRRuntimeDiagnostic] = []
+        var recoveryEdits: [LRRuntimeRecoveryEdit] = []
+        // Input is mutated during recovery. Preserve each real token's
+        // original coordinate so repairs remain replayable after insertions.
+        var inputOrigins: [Int?] = Array(tokens.indices.map(Optional.some)) + [tokens.count]
         var inserted: Set<Int> = []
         var attempted: Set<String> = []
         var forcedUsed = false
@@ -147,7 +177,8 @@ public enum LRTableRuntime {
         }
         func finish(_ outcome: LRRuntimeOutcome) -> LRRuntimeResult {
             .init(tree: outcome == .accepted ? nodes.last : nil, frames: frames, outcome: outcome,
-                  diagnostics: diagnostics, checkpoints: checkpoints.values.sorted { $0.tokenIndex < $1.tokenIndex })
+                  diagnostics: diagnostics, recoveryEdits: recoveryEdits,
+                  checkpoints: checkpoints.values.sorted { $0.tokenIndex < $1.tokenIndex })
         }
 
         for step in (checkpoint?.steps ?? 0)..<stepLimit {
@@ -171,28 +202,43 @@ public enum LRTableRuntime {
                     if case .shift(let target) = action { return !actions(target, lookahead).isEmpty }
                     return false
                 }) {
+                    let originalIndex = inputOrigins[cursor...].compactMap { $0 }.first ?? tokens.count
                     inserted = Set(inserted.map { $0 >= cursor ? $0 + 1 : $0 }); inserted.insert(cursor); input.insert(value, at: cursor)
+                    inputOrigins.insert(nil, at: cursor)
+                    recoveryEdits.append(.insert(symbol: value, atToken: originalIndex))
                     diagnostics.append(.init(tokenIndex: cursor, state: state, unexpected: lookahead, expected: expected, message: "Unexpected ‘\(lookahead)’ in I\(state).", recovery: .insertedToken, recoverySymbol: value, recoveryDetail: "Inserted missing ‘\(value)’ before ‘\(lookahead)’."))
                     frames.append(makeFrame("recover: insert missing ‘\(value)’", state: state, symbol: lookahead)); continue
                 }
                 if lookahead != eof, cursor + 1 < input.count, !actions(state, input[cursor + 1]).isEmpty {
                     let removed = input.remove(at: cursor)
+                    let removedOrigin = inputOrigins.remove(at: cursor) ?? (inputOrigins[cursor...].compactMap { $0 }.first ?? tokens.count)
                     inserted = Set(inserted.compactMap { $0 == cursor ? nil : ($0 > cursor ? $0 - 1 : $0) })
+                    recoveryEdits.append(.delete(symbol: removed, atToken: removedOrigin))
                     diagnostics.append(.init(tokenIndex: cursor, state: state, unexpected: removed, expected: expected, message: "Unexpected ‘\(removed)’ in I\(state).", recovery: .deletedToken, recoverySymbol: removed, recoveryDetail: "Deleted ‘\(removed)’ and resumed with ‘\(input[cursor])’."))
                     frames.append(makeFrame("recover: delete unexpected ‘\(removed)’", state: state, symbol: lookahead)); continue
                 }
                 if let value = insertionOrder.first(where: { value in
                     value != eof && actions(state, value).contains { if case .shift = $0 { true } else { false } }
                 }) {
+                    let originalIndex = inputOrigins[cursor...].compactMap { $0 }.first ?? tokens.count
                     inserted = Set(inserted.map { $0 >= cursor ? $0 + 1 : $0 }); inserted.insert(cursor); input.insert(value, at: cursor)
+                    inputOrigins.insert(nil, at: cursor)
+                    recoveryEdits.append(.insert(symbol: value, atToken: originalIndex))
                     diagnostics.append(.init(tokenIndex: cursor, state: state, unexpected: lookahead, expected: expected, message: "Unexpected ‘\(lookahead)’ in I\(state).", recovery: .insertedToken, recoverySymbol: value, recoveryDetail: "Inserted missing ‘\(value)’ before ‘\(lookahead)’."))
                     frames.append(makeFrame("recover: insert missing ‘\(value)’", state: state, symbol: lookahead)); continue
                 }
                 if let point = synchronizationPoint(input: input, cursor: cursor, states: states, cells: cells, preferred: recovery.synchronizationTerminals) {
+                    let recoveryStart = cursor
                     let discarded = point.cursor - cursor
+                    let discardedSymbols = Array(input[cursor..<point.cursor])
+                    let originalStart = inputOrigins[cursor..<point.cursor].compactMap { $0 }.first
+                        ?? (inputOrigins[point.cursor...].compactMap { $0 }.first ?? tokens.count)
                     if point.pops > 0 { states.removeLast(point.pops); symbols.removeLast(min(point.pops, symbols.count)); nodes.removeLast(min(point.pops, nodes.count)) }
                     cursor = point.cursor
-                    diagnostics.append(.init(tokenIndex: cursor, state: state, unexpected: lookahead, expected: expected, message: "Unexpected ‘\(lookahead)’ in I\(state).", recovery: .synchronized, recoverySymbol: input[cursor], recoveryDetail: "Discarded \(discarded) token(s), popped \(point.pops) state(s), and synchronized at ‘\(input[cursor])’."))
+                    if !discardedSymbols.isEmpty {
+                        recoveryEdits.append(.skip(symbols: discardedSymbols, fromToken: originalStart))
+                    }
+                    diagnostics.append(.init(tokenIndex: recoveryStart, state: state, unexpected: lookahead, expected: expected, message: "Unexpected ‘\(lookahead)’ in I\(state).", recovery: .synchronized, recoverySymbol: input[cursor], recoveryDetail: "Discarded \(discarded) token(s), popped \(point.pops) state(s), and synchronized at ‘\(input[cursor])’."))
                     frames.append(makeFrame("recover: synchronize at ‘\(input[cursor])’", state: states.last ?? state, symbol: nil)); continue
                 }
                 return finish(.rejected(message: "Unexpected ‘\(lookahead)’ in I\(state); recovery failed.", expected: expected))

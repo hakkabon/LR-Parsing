@@ -21,6 +21,23 @@ final class LRIncrementalRuntimeTests: XCTestCase {
         XCTAssertEqual(edited.result.outcome, .accepted)
     }
 
+    func testResumedExecutionPreservesNativeRecoveryScript() {
+        let session = LRIncrementalRuntime()
+        _ = session.parse(
+            ["a", "b"], table: alternativeSuffixTable,
+            recovery: .init(maximumDiagnostics: 1))
+
+        let edited = session.parse(
+            ["a", "x", "b"], table: alternativeSuffixTable,
+            recovery: .init(maximumDiagnostics: 1))
+
+        XCTAssertEqual(edited.resumedAtToken, 1)
+        XCTAssertEqual(edited.result.outcome, .accepted)
+        XCTAssertEqual(edited.result.recoveryEdits, [
+            .delete(symbol: "x", atToken: 1),
+        ])
+    }
+
     func testReportsWhyNativeReuseIsUnavailable() {
         let session = LRIncrementalRuntime()
         _ = session.parse(["a", "b"], table: alternativeSuffixTable)
