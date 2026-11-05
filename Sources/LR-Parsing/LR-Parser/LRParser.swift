@@ -68,6 +68,15 @@ public class LRParser: DeterministicParser {
         try parse(stream: TokenizerStream(source: source, symbols: Set(symbols), keywords: []))
     }
 
+    /// Tokenizes source through the parser's normal source front end and emits
+    /// the neutral symbol names consumed by `LRIncrementalRuntime`.
+    public func incrementalRuntimeTokens(for source: String) throws -> [String] {
+        let stream = TokenizerStream(source: source, symbols: Set(symbols), keywords: [])
+        return try (0..<stream.count).map {
+            try stream.terminal(at: $0).terminal.lrSymbolName
+        }
+    }
+
     /// Parses with structured diagnostics and optional deterministic recovery.
     /// Local repair tries a bounded single-token deletion or insertion first;
     /// panic mode discards input until the current state has a valid action.

@@ -1,8 +1,29 @@
 import XCTest
+import Grammar
 import IncrementalParsing
 @testable import LR_Parsing
 
 final class LRIncrementalRuntimeTests: XCTestCase {
+    func testGeneratedParserExportsNativeIncrementalRuntimeTable() {
+        let grammar = Grammar(
+            productions: [Production(
+                goal: NonTerminal(name: "S"),
+                rule: [.terminal(Terminal(string: "a")),
+                       .terminal(Terminal(string: "b"))])],
+            start: NonTerminal(name: "S"), lexicalTokens: [:])
+        let parser = LRParser(grammar: grammar, algorithm: .slr)
+        let table = parser.incrementalRuntimeTable()
+        let runtime = LRIncrementalRuntime()
+
+        let first = runtime.parse(["a", "b"], table: table)
+        let second = runtime.parse(["a", "b"], table: table)
+
+        XCTAssertEqual(first.result.outcome, .accepted)
+        XCTAssertEqual(second.result.outcome, .accepted)
+        XCTAssertGreaterThan(second.reusedStateCount, 0)
+        XCTAssertEqual(second.evidence.strategy, .incremental)
+    }
+
     func testResumesFromLastUnchangedPrefixCheckpointWithSharedEvidence() {
         let session = LRIncrementalRuntime()
         let initial = session.parse(["a", "b"], table: alternativeSuffixTable)

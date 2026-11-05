@@ -1,5 +1,6 @@
 import Foundation
 import IncrementalParsing
+import Grammar
 
 /// Evidence produced by an incremental LR execution.
 public struct LRIncrementalRuntimeResult: Sendable {
@@ -52,6 +53,61 @@ public struct LRIncrementalRuntimeResult: Sendable {
                     reused: reusedFrameCount,
                     rebuilt: max(0, result.frames.count - reusedFrameCount),
                     strategy: "prefix-replay")]))
+    }
+}
+
+public extension LRParser {
+    /// Exports the generated automaton into the canonical runtime table used
+    /// by `LRIncrementalRuntime`. This is the adoption boundary for language
+    /// packages: generated LR state stays owned by LR-Parsing.
+    func incrementalRuntimeTable() -> LRRuntimeTable {
+        let automaton = generate()
+        let productions = automaton.productions
+            .sorted { $0.identity < $1.identity }
+            .map { artifact in
+                LRRuntimeTable.Production(
+                    identity: artifact.identity.rawValue,
+                    lhs: artifact.production.goal.name,
+                    rhs: artifact.production.rule.map(\.lrSymbolName))
+            }
+
+        struct CellKey: Hashable { let state: Int; let symbol: String }
+        var actions: [CellKey: Set<LRRuntimeTable.Action>] = [:]
+        var terminals = Set<String>(["$"])
+        for (state, row) in automaton.actionTable {
+            for (terminal, action) in row {
+                let symbol = terminal.lrSymbolName
+                terminals.insert(symbol)
+                let runtimeAction: LRRuntimeTable.Action = switch action {
+                case .shift(let target): .shift(target)
+                case .reduce(let production): .reduce(production.lrArtifactID.rawValue)
+                case .accept: .accept
+                }
+                actions[.init(state: state, symbol: symbol), default: []]
+                    .insert(runtimeAction)
+            }
+        }
+        for (state, row) in automaton.gotoTable {
+            for (nonterminal, target) in row {
+                actions[.init(state: state, symbol: nonterminal.name), default: []]
+                    .insert(.goTo(target))
+            }
+        }
+        func actionKey(_ action: LRRuntimeTable.Action) -> String {
+            switch action {
+            case .shift(let state): "0:\(state)"
+            case .reduce(let production): "1:\(production)"
+            case .accept: "2"
+            case .goTo(let state): "3:\(state)"
+            }
+        }
+        let cells = actions.map { key, values in
+            LRRuntimeTable.Cell(
+                state: key.state, symbol: key.symbol,
+                actions: values.sorted { actionKey($0) < actionKey($1) })
+        }.sorted { ($0.state, $0.symbol) < ($1.state, $1.symbol) }
+        return LRRuntimeTable(
+            terminals: terminals.sorted(), productions: productions, cells: cells)
     }
 }
 
