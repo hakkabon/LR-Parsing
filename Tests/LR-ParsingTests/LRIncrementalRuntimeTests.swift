@@ -116,6 +116,32 @@ final class LRIncrementalRuntimeTests: XCTestCase {
             changed.incrementalArtifactIdentity.fingerprint)
     }
 
+    func testGrammarChangeConservativelyRejectsCheckpointReuse() {
+        let old = Grammar(
+            productions: [.init(goal: "S", rule: [.terminal("a"), .terminal("b")])],
+            start: "S", lexicalTokens: [:])
+        let changed = Grammar(
+            productions: [
+                .init(goal: "S", rule: [.terminal("a"), .terminal("b")]),
+                .init(goal: "S", rule: [.terminal("a"), .terminal("c")]),
+            ],
+            start: "S", lexicalTokens: [:])
+        let change = old.changeSet(to: changed)
+        let runtime = LRIncrementalRuntime()
+        _ = runtime.parse(
+            ["a", "b"],
+            table: LRParser(grammar: old, algorithm: .slr).incrementalRuntimeTable())
+
+        let result = runtime.parse(
+            ["a", "c"],
+            table: LRParser(grammar: changed, algorithm: .slr).incrementalRuntimeTable())
+
+        XCTAssertFalse(change.isEmpty)
+        XCTAssertEqual(result.resumedAtToken, 0)
+        XCTAssertEqual(result.evidence.strategy, .fallback)
+        XCTAssertEqual(result.evidence.fallback, .incompatibleArtifact)
+    }
+
     func testSharedDifferentialCampaignMatchesCleanLRExecution() throws {
         let table = alternativeSuffixTable
         let report = try DifferentialValidation.run(
